@@ -7,15 +7,30 @@ case class Board(cells: Vector[Vector[Option[Piece]]]):
   def cell(row: Int, col: Int): Option[Piece] =
     if isValid(row, col) then cells(row)(col) else None
 
+  def cell(pos: Position): Option[Piece] =
+    cell(pos.row, pos.col)
+
   def put(row: Int, col: Int, piece: Piece): Board =
     if isValid(row, col) then
       copy(cells = cells.updated(row, cells(row).updated(col, Some(piece))))
     else this
 
+  def put(pos: Position, piece: Piece): Board =
+    put(pos.row, pos.col, piece)
+
   def clear(row: Int, col: Int): Board =
     if isValid(row, col) then
       copy(cells = cells.updated(row, cells(row).updated(col, None)))
     else this
+
+  def clear(pos: Position): Board =
+    clear(pos.row, pos.col)
+
+  /** Apply a move: pick up the piece at 'from' and place it at 'to'. No rule validation. */
+  def move(m: Move): Option[Board] =
+    cell(m.from).map { piece =>
+      this.clear(m.from).put(m.to, piece)
+    }
 
   def isValid(row: Int, col: Int): Boolean =
     row >= 0 && row < size && col >= 0 && col < size
