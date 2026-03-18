@@ -275,4 +275,90 @@ class MoveValidatorSpec extends AnyWordSpec with Matchers {
       MoveValidator.isValidMove(move, board) shouldBe false
     }
   }
+
+  // ---------- Check detection ----------
+
+  "isInCheck" should {
+
+    "detect check by rook" in {
+      val board = boardWith(
+        Position(0, 4) -> Piece.King(Color.White),
+        Position(0, 0) -> Piece.Rook(Color.Black)
+      )
+      MoveValidator.isInCheck(board, Color.White) shouldBe true
+    }
+
+    "detect check by bishop" in {
+      val board = boardWith(
+        Position(0, 0) -> Piece.King(Color.White),
+        Position(3, 3) -> Piece.Bishop(Color.Black)
+      )
+      MoveValidator.isInCheck(board, Color.White) shouldBe true
+    }
+
+    "detect check by knight" in {
+      val board = boardWith(
+        Position(0, 4) -> Piece.King(Color.White),
+        Position(2, 5) -> Piece.Knight(Color.Black)
+      )
+      MoveValidator.isInCheck(board, Color.White) shouldBe true
+    }
+
+    "detect check by pawn" in {
+      val board = boardWith(
+        Position(4, 4) -> Piece.King(Color.White),
+        Position(5, 5) -> Piece.Pawn(Color.Black) // black pawn captures downward-diag
+      )
+      MoveValidator.isInCheck(board, Color.White) shouldBe true
+    }
+
+    "return false when king is safe" in {
+      val board = boardWith(
+        Position(0, 4) -> Piece.King(Color.White),
+        Position(5, 0) -> Piece.Rook(Color.Black)
+      )
+      MoveValidator.isInCheck(board, Color.White) shouldBe false
+    }
+
+    "return false when no king on board" in {
+      val board = boardWith(Position(0, 0) -> Piece.Rook(Color.Black))
+      MoveValidator.isInCheck(board, Color.White) shouldBe false
+    }
+  }
+
+  // ---------- Legal move generation ----------
+
+  "legalMoves" should {
+
+    "not include moves that leave king in check" in {
+      // White rook on same row as white king, black rook attacks along that row
+      val board = boardWith(
+        Position(0, 4) -> Piece.King(Color.White),
+        Position(0, 3) -> Piece.Rook(Color.White),
+        Position(0, 0) -> Piece.Rook(Color.Black),
+        Position(7, 4) -> Piece.King(Color.Black)
+      )
+      val moves = MoveValidator.legalMoves(board, Color.White)
+      // White rook at d1 is pinned to king by black rook at a1
+      // So rook can only move along row 0 (staying between king and attacker)
+      val rookMoves = moves.filter(_.from == Position(0, 3))
+      rookMoves.foreach { m =>
+        m.to.row shouldBe 0 // rook must stay on row 0
+      }
+    }
+
+    "return empty list in checkmate position" in {
+      // Back-rank mate: black king at g8 boxed in by own pawns, white rook on rank 8
+      val board = boardWith(
+        Position(0, 0) -> Piece.King(Color.White),
+        Position(7, 0) -> Piece.Rook(Color.White),  // a8: checks king on rank 8
+        Position(7, 6) -> Piece.King(Color.Black),   // g8
+        Position(6, 5) -> Piece.Pawn(Color.Black),   // f7
+        Position(6, 6) -> Piece.Pawn(Color.Black),   // g7
+        Position(6, 7) -> Piece.Pawn(Color.Black)    // h7
+      )
+      val moves = MoveValidator.legalMoves(board, Color.Black)
+      moves shouldBe empty
+    }
+  }
 }
