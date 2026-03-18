@@ -1,6 +1,7 @@
 package chess.aview
 
 import chess.controller.ControllerInterface
+import chess.model.Move
 import chess.util.Observer
 import scala.io.StdIn
 
@@ -9,9 +10,10 @@ class TUI(controller: ControllerInterface) extends Observer:
 
   override def update(): Unit =
     println(controller.boardToString)
+    println(controller.statusText)
 
   def inputLoop(): Unit =
-    println("alu-chess – Eingabe ('n' = neues Spiel, 'q' = beenden):")
+    println("alu-chess – Befehle: 'n' = neues Spiel, 'q' = beenden, oder Zug z.B. 'e2 e4'")
     update()
     var running = true
     while running do
@@ -28,6 +30,14 @@ class TUI(controller: ControllerInterface) extends Observer:
         true
       case "" =>
         true
-      case _ =>
-        println(s"Unbekannter Befehl: '$input'. Versuche 'n' oder 'q'.")
-        true
+      case moveStr =>
+        Move.fromString(moveStr) match
+          case Some(move) =>
+            if controller.doMove(move) then
+              true
+            else
+              println(s"Ungültiger Zug: $moveStr")
+              true
+          case None =>
+            println(s"Eingabe nicht erkannt: '$moveStr'. Format: 'e2 e4'")
+            true
