@@ -1,7 +1,7 @@
 package chess.aview
 
 import chess.controller.ControllerInterface
-import chess.model.Move
+import chess.model.{Move, GameStatus}
 import chess.util.Observer
 import scala.io.StdIn
 
@@ -31,13 +31,20 @@ class TUI(controller: ControllerInterface) extends Observer:
       case "" =>
         true
       case moveStr =>
-        Move.fromString(moveStr) match
-          case Some(move) =>
-            if controller.doMove(move) then
+        val gameOver = controller.game.status match
+          case GameStatus.Checkmate | GameStatus.Stalemate | GameStatus.Resigned => true
+          case _ => false
+        if gameOver then
+          println("Spiel ist beendet. 'n' für neues Spiel oder 'q' zum Beenden.")
+          true
+        else
+          Move.fromString(moveStr) match
+            case Some(move) =>
+              if controller.doMove(move) then
+                true
+              else
+                println(s"Ungültiger Zug: $moveStr")
+                true
+            case None =>
+              println(s"Eingabe nicht erkannt: '$moveStr'. Format: 'e2 e4'")
               true
-            else
-              println(s"Ungültiger Zug: $moveStr")
-              true
-          case None =>
-            println(s"Eingabe nicht erkannt: '$moveStr'. Format: 'e2 e4'")
-            true

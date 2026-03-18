@@ -28,5 +28,8 @@ class Controller extends ControllerInterface with Observable:
 
   override def statusText: String =
     _game.status match
-      case GameStatus.Playing  => s"${_game.currentPlayer} am Zug"
-      case GameStatus.Resigned => s"Aufgegeben"
+      case GameStatus.Playing    => s"${_game.currentPlayer} am Zug"
+      case GameStatus.Check      => s"${_game.currentPlayer} am Zug – Schach!"
+      case GameStatus.Checkmate  => s"Schachmatt! ${_game.currentPlayer.opposite} gewinnt"
+      case GameStatus.Stalemate  => s"Patt – Unentschieden"
+      case GameStatus.Resigned   => s"Aufgegeben"
