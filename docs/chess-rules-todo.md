@@ -19,8 +19,8 @@
 | Schach-Erkennung | ✅ |
 | Legale Züge (Schach-Constraint) | ✅ |
 | Schachmatt / Patt | ✅ |
-| Spezialzüge (Rochade, En Passant, Promotion) | ❌ |
-| Remis-Bedingungen | ❌ |
+| Spezialzüge (Rochade, En Passant, Promotion) | ✅ |
+| Remis-Bedingungen | ✅ |
 
 ---
 
@@ -98,7 +98,7 @@ Jede Figur bekommt eine Funktion: `(Move, Board) → Boolean`
 
 ---
 
-### Stufe 7: Rochade (Castling) ⬜
+### Stufe 7: Rochade (Castling) ✅
 **Aufwand:** Mittel
 **Dateien:** `Game.scala`, `MoveValidator.scala`, evtl. `Game` erweitern um Zustandstracking
 
@@ -113,7 +113,7 @@ Jede Figur bekommt eine Funktion: `(Move, Board) → Boolean`
 
 ---
 
-### Stufe 8: En Passant ⬜
+### Stufe 8: En Passant ✅
 **Aufwand:** Mittel
 **Dateien:** `Game.scala`, `MoveValidator.scala`
 
@@ -124,7 +124,7 @@ Jede Figur bekommt eine Funktion: `(Move, Board) → Boolean`
 
 ---
 
-### Stufe 9: Bauernumwandlung (Promotion) ⬜
+### Stufe 9: Bauernumwandlung (Promotion) ✅
 **Aufwand:** Klein–Mittel
 **Dateien:** `Move.scala` (erweitern), `Game.scala`, `MoveValidator.scala`
 
@@ -135,7 +135,7 @@ Jede Figur bekommt eine Funktion: `(Move, Board) → Boolean`
 
 ---
 
-### Stufe 10: Remis-Bedingungen ⬜
+### Stufe 10: Remis-Bedingungen ✅
 **Aufwand:** Mittel
 **Dateien:** `Game.scala`, `GameStatus` erweitern
 
