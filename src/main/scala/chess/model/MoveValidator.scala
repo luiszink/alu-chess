@@ -85,3 +85,63 @@ object MoveValidator:
       val pos = Position(move.from.row + i * dr, move.from.col + i * dc)
       board.cell(pos).isEmpty
     }
+
+  // --- Check detection ---
+
+  /** Is the king of the given color under attack? */
+  def isInCheck(board: Board, color: Color): Boolean =
+    findKing(board, color) match
+      case Some(kingPos) => isAttackedBy(board, kingPos, color.opposite)
+      case None          => false // no king on board (shouldn't happen in normal play)
+
+  /** Find the position of the king of a given color. */
+  private def findKing(board: Board, color: Color): Option[Position] =
+    val positions = for
+      r <- 0 until 8
+      c <- 0 until 8
+      if board.cell(r, c).contains(Piece.King(color))
+    yield Position(r, c)
+    positions.headOption
+
+  /** Can any piece of `attackerColor` reach `target`? */
+  private def isAttackedBy(board: Board, target: Position, attackerColor: Color): Boolean =
+    val attackers = for
+      r <- 0 until 8
+      c <- 0 until 8
+      pos = Position(r, c)
+      piece <- board.cell(pos)
+      if piece.color == attackerColor
+    yield pos
+
+    attackers.exists { from =>
+      isValidMove(Move(from, target), board)
+    }
+
+  // --- Legal move generation ---
+
+  /** All legal moves for a player: piece moves that don't leave own king in check. */
+  def legalMoves(board: Board, color: Color): List[Move] =
+    val ownPieces = for
+      r <- 0 until 8
+      c <- 0 until 8
+      pos = Position(r, c)
+      piece <- board.cell(pos)
+      if piece.color == color
+    yield pos
+
+    val allMoves = for
+      from <- ownPieces
+      r <- 0 until 8
+      c <- 0 until 8
+      to = Position(r, c)
+      move = Move(from, to)
+      if to != from
+      if !board.cell(to).exists(_.color == color) // not capturing own piece
+      if isValidMove(move, board)
+    yield move
+
+    allMoves.filter { move =>
+      board.move(move) match
+        case Some(newBoard) => !isInCheck(newBoard, color)
+        case None           => false
+    }.toList
