@@ -58,6 +58,27 @@ class GameSpec extends AnyWordSpec with Matchers {
       val move = Move(Position(6, 4), Position(4, 4)) // black pawn, but white's turn
       game.applyMove(move) shouldBe None
     }
+
+    "reject capturing a friendly piece" in {
+      // place two white pieces next to each other
+      val board = Board.empty
+        .put(Position(0, 0), Piece.Rook(Color.White))
+        .put(Position(0, 1), Piece.Knight(Color.White))
+      val game = Game(board, Color.White, GameStatus.Playing)
+      val move = Move(Position(0, 0), Position(0, 1))
+      game.applyMove(move) shouldBe None
+    }
+
+    "allow capturing an opponent's piece" in {
+      val board = Board.empty
+        .put(Position(0, 0), Piece.Rook(Color.White))
+        .put(Position(0, 1), Piece.Knight(Color.Black))
+      val game = Game(board, Color.White, GameStatus.Playing)
+      val move = Move(Position(0, 0), Position(0, 1))
+      val result = game.applyMove(move)
+      result shouldBe defined
+      result.get.board.cell(Position(0, 1)) shouldBe Some(Piece.Rook(Color.White))
+    }
   }
 
   "resign" should {

@@ -8,11 +8,14 @@ case class Game(board: Board, currentPlayer: Color, status: GameStatus):
   def switchPlayer: Game =
     copy(currentPlayer = currentPlayer.opposite)
 
-  /** Apply a move if the source has a piece of the current player's color. Returns None on failure. */
+  /** Apply a move if the source has a piece of the current player's color
+    * and the target is not occupied by a friendly piece. Returns None on failure. */
   def applyMove(m: Move): Option[Game] =
     board.cell(m.from) match
       case Some(piece) if piece.color == currentPlayer =>
-        board.move(m).map(newBoard => copy(board = newBoard).switchPlayer)
+        val targetFriendly = board.cell(m.to).exists(_.color == currentPlayer)
+        if targetFriendly then None
+        else board.move(m).map(newBoard => copy(board = newBoard).switchPlayer)
       case _ => None
 
   def resign: Game =
