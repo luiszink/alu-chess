@@ -3,7 +3,7 @@ package chess.model
 enum GameStatus:
   case Playing, Check, Checkmate, Stalemate, Resigned
 
-case class Game(board: Board, currentPlayer: Color, status: GameStatus, movedPieces: Set[Position] = Set.empty):
+case class Game(board: Board, currentPlayer: Color, status: GameStatus, movedPieces: Set[Position] = Set.empty, lastMove: Option[Move] = None):
 
   def switchPlayer: Game =
     copy(currentPlayer = currentPlayer.opposite)
@@ -21,7 +21,7 @@ case class Game(board: Board, currentPlayer: Color, status: GameStatus, movedPie
       case Some(piece) if piece.color == currentPlayer =>
         val targetFriendly = board.cell(m.to).exists(_.color == currentPlayer)
         if targetFriendly then None
-        else if !MoveValidator.isValidMove(m, board, movedPieces) then None
+        else if !MoveValidator.isValidMove(m, board, movedPieces, lastMove) then None
         else
           board.move(m).flatMap { newBoard =>
             val fullBoard = MoveValidator.applyMoveEffects(m, board, newBoard)
@@ -31,13 +31,13 @@ case class Game(board: Board, currentPlayer: Color, status: GameStatus, movedPie
               val opponent = currentPlayer.opposite
               val newMovedPieces = movedPieces + m.from
               val opponentInCheck = MoveValidator.isInCheck(fullBoard, opponent)
-              val opponentHasMoves = MoveValidator.legalMoves(fullBoard, opponent, newMovedPieces).nonEmpty
+              val opponentHasMoves = MoveValidator.legalMoves(fullBoard, opponent, newMovedPieces, Some(m)).nonEmpty
               val newStatus =
                 if opponentInCheck && !opponentHasMoves then GameStatus.Checkmate
                 else if !opponentInCheck && !opponentHasMoves then GameStatus.Stalemate
                 else if opponentInCheck then GameStatus.Check
                 else GameStatus.Playing
-              Some(copy(board = fullBoard, currentPlayer = opponent, status = newStatus, movedPieces = newMovedPieces))
+              Some(copy(board = fullBoard, currentPlayer = opponent, status = newStatus, movedPieces = newMovedPieces, lastMove = Some(m)))
           }
       case _ => None
 

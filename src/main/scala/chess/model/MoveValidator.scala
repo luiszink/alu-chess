@@ -1,7 +1,7 @@
 package chess.model
 
 /** Validates whether a move is legal according to piece-specific movement rules.
-  * Checks movement patterns, path clearance (sliding pieces), and special moves (castling). */
+  * Checks movement patterns, path clearance (sliding pieces), and special moves (castling, en passant). */
 object MoveValidator:
 
   /** Check if a move is valid for the piece at move.from on the given board.
@@ -16,7 +16,7 @@ object MoveValidator:
   private def isValidForPiece(piece: Piece, move: Move, board: Board,
                               movedPieces: Set[Position], lastMove: Option[Move]): Boolean =
     piece match
-      case Piece.Pawn(_)   => isValidPawnMove(piece.color, move, board)
+      case Piece.Pawn(_)   => isValidPawnMove(piece.color, move, board, lastMove)
       case Piece.Rook(_)   => isValidRookMove(move, board)
       case Piece.Bishop(_) => isValidBishopMove(move, board)
       case Piece.Queen(_)  => isValidQueenMove(move, board)
@@ -25,7 +25,7 @@ object MoveValidator:
 
   // --- Pawn ---
 
-  private def isValidPawnMove(color: Color, move: Move, board: Board): Boolean =
+  private def isValidPawnMove(color: Color, move: Move, board: Board, lastMove: Option[Move] = None): Boolean =
     val direction = if color == Color.White then 1 else -1
     val startRow  = if color == Color.White then 1 else 6
     val dr = move.to.row - move.from.row
@@ -38,8 +38,19 @@ object MoveValidator:
       board.cell(Position(move.from.row + direction, move.from.col)).isEmpty
     val isDiagonalCapture = dr == direction && math.abs(dc) == 1 &&
       board.cell(move.to).exists(_.color != color)
+    val isEnPassant = dr == direction && math.abs(dc) == 1 &&
+      board.cell(move.to).isEmpty &&
+      lastMove.exists { last =>
+        val capturedPos = Position(move.from.row, move.to.col)
+        board.cell(capturedPos).exists {
+          case Piece.Pawn(c) => c != color
+          case _ => false
+        } &&
+        math.abs(last.to.row - last.from.row) == 2 &&
+        last.to == capturedPos
+      }
 
-    isOneForward || isTwoForward || isDiagonalCapture
+    isOneForward || isTwoForward || isDiagonalCapture || isEnPassant
 
   // --- Rook ---
 
@@ -122,9 +133,10 @@ object MoveValidator:
       case _ => false
 
   /** Apply special move side-effects to the board after basic piece movement.
-    * Currently handles: castling rook movement. */
+    * Handles: castling rook movement, en passant capture. */
   def applyMoveEffects(move: Move, boardBefore: Board, boardAfterMove: Board): Board =
-    boardBefore.cell(move.from) match
+    // Castling: move the rook
+    val afterCastling = boardBefore.cell(move.from) match
       case Some(Piece.King(color)) if math.abs(move.to.col - move.from.col) == 2 =>
         val row = move.from.row
         if move.to.col == 6 then
@@ -132,6 +144,12 @@ object MoveValidator:
         else
           boardAfterMove.clear(Position(row, 0)).put(Position(row, 3), Piece.Rook(color))
       case _ => boardAfterMove
+
+    // En passant: remove captured pawn (diagonal pawn move to empty square)
+    boardBefore.cell(move.from) match
+      case Some(Piece.Pawn(_)) if move.from.col != move.to.col && boardBefore.cell(move.to).isEmpty =>
+        afterCastling.clear(Position(move.from.row, move.to.col))
+      case _ => afterCastling
 
   // --- Check detection ---
 
