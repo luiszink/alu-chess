@@ -4,11 +4,21 @@ package chess.model
   * Converts a FEN string to a Game and vice versa. */
 object Fen:
 
+  private val defaultColor = "w"
+  private val defaultCastling = "-"
+  private val defaultEnPassant = "-"
+  private val defaultHalfMoveClock = "0"
+
+  private def normalizeFenParts(parts: Array[String]): Either[ChessError, Array[String]] =
+    parts.length match
+      case 1 => Right(Array(parts(0), defaultColor, defaultCastling, defaultEnPassant, defaultHalfMoveClock))
+      case n if n >= 4 => Right(parts)
+      case _ => Left(ChessError.InvalidFenFormat("FEN requires either 1 field (board only) or at least 4 fields"))
+
   /** Parse a FEN string into a Game. Returns Left with error detail on failure. */
   def parseE(fen: String): Either[ChessError, Game] =
-    val parts = fen.trim.split("\\s+")
-    if parts.length < 4 then Left(ChessError.InvalidFenFormat("FEN requires at least 4 fields"))
-    else
+    val rawParts = fen.trim.split("\\s+")
+    normalizeFenParts(rawParts).flatMap { parts =>
       for
         board <- parseBoardE(parts(0))
         color <- parseColorE(parts(1))
@@ -19,6 +29,7 @@ object Fen:
         val lastMove = parseEnPassant(enPassantStr)
         val halfMoveClock = if parts.length > 4 then parts(4).toIntOption.getOrElse(0) else 0
         Game(board, color, GameStatus.Playing, movedPieces, lastMove, halfMoveClock)
+      }
 
   /** Parse a FEN string into a Game. Returns Failure with exception on invalid input. */
   def parseT(fen: String): scala.util.Try[Game] =

@@ -150,6 +150,16 @@ class FenSpec extends AnyWordSpec with Matchers:
 
   "Fen.parseE" should {
 
+    "accept board-only FEN and apply defaults" in {
+      val fen = "8/8/8/2k5/4K3/8/8/8"
+      val result = Fen.parseE(fen)
+      result shouldBe a[Right[?, ?]]
+      result.map(_.currentPlayer) shouldBe Right(Color.White)
+      result.map(_.status) shouldBe Right(GameStatus.Playing)
+      result.map(_.board.cell(Position(4, 2))) shouldBe Right(Some(Piece.King(Color.Black)))
+      result.map(_.board.cell(Position(3, 4))) shouldBe Right(Some(Piece.King(Color.White)))
+    }
+
     "return Right for valid FEN starting position" in {
       val fen = "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1"
       val result = Fen.parseE(fen)
@@ -163,8 +173,8 @@ class FenSpec extends AnyWordSpec with Matchers:
       Fen.parseE(fen).map(_.currentPlayer) shouldBe Right(Color.Black)
     }
 
-    "return Left(InvalidFenFormat) for too few fields" in {
-      Fen.parseE("rnbqkbnr/pppppppp/8/8") shouldBe Left(ChessError.InvalidFenFormat("FEN requires at least 4 fields"))
+    "return Left(InvalidFenFormat) for invalid board-only FEN" in {
+      Fen.parseE("rnbqkbnr/pppppppp/8/8") shouldBe Left(ChessError.InvalidFenFormat("Expected 8 ranks"))
     }
 
     "return Left(InvalidFenFormat) for wrong rank count" in {
