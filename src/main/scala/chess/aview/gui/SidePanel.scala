@@ -1,18 +1,19 @@
 package chess.aview.gui
 
 import chess.controller.ControllerInterface
-import chess.model.GameStatus
+import chess.model.{GameStatus, TestPositions, Fen}
 
 import scala.swing.*
 import scala.swing.event.*
 import java.awt.{Color as AwtColor, Font, Dimension, Cursor}
 import javax.swing.border.EmptyBorder
+import javax.swing.JOptionPane
 
 /** Side panel showing game status, move info, and control buttons. */
 class SidePanel(controller: ControllerInterface, onNewGame: () => Unit, onQuit: () => Unit) extends BoxPanel(Orientation.Vertical):
 
   background = new AwtColor(38, 36, 33)
-  preferredSize = new Dimension(220, 0)
+  preferredSize = new Dimension(240, 0)
   border = new EmptyBorder(20, 16, 20, 16)
 
   // --- Title ---
@@ -58,6 +59,50 @@ class SidePanel(controller: ControllerInterface, onNewGame: () => Unit, onQuit: 
   private val newGameButton = styledButton("Neues Spiel", onNewGame)
   private val quitButton = styledButton("Beenden", onQuit)
 
+  // --- Test Positions ---
+  private val testPositionLabel = new Label("Teststellungen"):
+    font = new Font("SansSerif", Font.BOLD, 13)
+    foreground = new AwtColor(180, 180, 180)
+    horizontalAlignment = Alignment.Center
+
+  private val positionCombo = new ComboBox(TestPositions.positions.map(_.name)):
+    font = new Font("SansSerif", Font.PLAIN, 12)
+    preferredSize = new Dimension(200, 30)
+    maximumSize = new Dimension(200, 30)
+
+  private val positionDescLabel = new Label(""):
+    font = new Font("SansSerif", Font.ITALIC, 11)
+    foreground = new AwtColor(160, 160, 160)
+    horizontalAlignment = Alignment.Center
+
+  private val loadPositionButton = styledButton("Stellung laden", () => loadSelectedPosition())
+
+  private def loadSelectedPosition(): Unit =
+    val idx = positionCombo.selection.index
+    if idx < 0 || idx >= TestPositions.positions.size then return
+    val tp = TestPositions.positions(idx)
+    if tp.fen.isEmpty then
+      // Custom FEN input
+      val input = JOptionPane.showInputDialog(
+        peer,
+        "FEN-String eingeben:",
+        "FEN laden",
+        JOptionPane.PLAIN_MESSAGE
+      )
+      if input != null && input.trim.nonEmpty then
+        if !controller.loadFen(input.trim) then
+          JOptionPane.showMessageDialog(peer, "Ungültiger FEN-String!", "Fehler", JOptionPane.ERROR_MESSAGE)
+    else
+      controller.loadFen(tp.fen)
+
+  listenTo(positionCombo.selection)
+  reactions += {
+    case SelectionChanged(`positionCombo`) =>
+      val idx = positionCombo.selection.index
+      if idx >= 0 && idx < TestPositions.positions.size then
+        positionDescLabel.text = s"<html><center>${TestPositions.positions(idx).description}</center></html>"
+  }
+
   // Layout
   contents += titleLabel
   contents += Swing.VStrut(20)
@@ -74,6 +119,16 @@ class SidePanel(controller: ControllerInterface, onNewGame: () => Unit, onQuit: 
   contents += newGameButton
   contents += Swing.VStrut(8)
   contents += quitButton
+  contents += Swing.VStrut(20)
+  contents += new Separator
+  contents += Swing.VStrut(12)
+  contents += testPositionLabel
+  contents += Swing.VStrut(8)
+  contents += positionCombo
+  contents += Swing.VStrut(4)
+  contents += positionDescLabel
+  contents += Swing.VStrut(8)
+  contents += loadPositionButton
   contents += Swing.VGlue
 
   def refresh(): Unit =

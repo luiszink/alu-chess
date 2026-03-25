@@ -1,6 +1,6 @@
 package chess.controller
 
-import chess.model.{Game, Board, Color, Move, GameStatus}
+import chess.model.{Game, Board, Color, Move, GameStatus, Fen}
 import chess.util.{Observable, Observer}
 
 class Controller extends ControllerInterface with Observable:
@@ -16,6 +16,14 @@ class Controller extends ControllerInterface with Observable:
     _game.applyMove(move) match
       case Some(updated) =>
         _game = updated
+        notifyObservers()
+        true
+      case None => false
+
+  override def loadFen(fen: String): Boolean =
+    Fen.parse(fen) match
+      case Some(game) =>
+        _game = game
         notifyObservers()
         true
       case None => false

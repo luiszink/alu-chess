@@ -49,12 +49,6 @@
 - Jeder generierte Code wird manuell gereviewed
 - Inkrementelle Commits (8 Commits in Woche 1–2), kein Big-Bang
 
-### Präsentations-Fokus
-- Warum MVC für ein Schachspiel?
-- Wie sieht eine saubere Scala-3-Projektstruktur aus?
-- Wie nutzt man KI methodisch (nicht nur als Autocomplete)?
-- Warum `Option` statt Exceptions für Zugvalidierung?
-- Wie hält man ein Domain-Model rein funktional und trotzdem benutzbar?
 
 ---
 

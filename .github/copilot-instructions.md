@@ -25,6 +25,7 @@ Dieses Dokument gibt Copilot einen stabilen, projektspezifischen Rahmen.
 - case class/enums für Domainmodell
 - Kleine, lesbare Methoden
 - Keine cleveren Lösungen auf Kosten der Verständlichkeit
+- vermeide try-catch, benutze Try-Monade statt dessen
 
 ## Testing-Regeln
 - ScalaTest für Unit-Tests
