@@ -364,4 +364,92 @@ class GameSpec extends AnyWordSpec with Matchers {
       result.get.halfMoveClock shouldBe 11
     }
   }
+
+  // ---------- applyMoveE ----------
+
+  "applyMoveE" should {
+
+    "return Right for a valid move" in {
+      val game = Game.newGame
+      val move = Move(Position(1, 4), Position(3, 4)) // e2 e4
+      game.applyMoveE(move) shouldBe a[Right[?, ?]]
+    }
+
+    "return Left(NoPieceAtSource) when source is empty" in {
+      val game = Game.newGame
+      val move = Move(Position(3, 3), Position(4, 3)) // empty square
+      game.applyMoveE(move) shouldBe Left(ChessError.NoPieceAtSource(Position(3, 3)))
+    }
+
+    "return Left(WrongColorPiece) when wrong color moves" in {
+      val game = Game.newGame
+      val move = Move(Position(6, 4), Position(4, 4)) // black pawn, white's turn
+      game.applyMoveE(move) shouldBe Left(
+        ChessError.WrongColorPiece(Position(6, 4), Color.White, Color.Black)
+      )
+    }
+
+    "return Left(FriendlyFire) when capturing own piece" in {
+      val board = Board.empty
+        .put(Position(0, 4), Piece.King(Color.White))
+        .put(Position(0, 7), Piece.Rook(Color.White))
+        .put(Position(1, 7), Piece.Pawn(Color.White))
+        .put(Position(7, 4), Piece.King(Color.Black))
+      val game = Game(board, Color.White, GameStatus.Playing)
+      val move = Move(Position(0, 7), Position(1, 7))
+      game.applyMoveE(move) shouldBe Left(ChessError.FriendlyFire(Position(0, 7), Position(1, 7)))
+    }
+
+    "return Left(IllegalMovePattern) for an illegal move pattern" in {
+      val game = Game.newGame
+      val move = Move(Position(1, 4), Position(4, 4)) // pawn moving 3 squares
+      game.applyMoveE(move) shouldBe Left(ChessError.IllegalMovePattern(move))
+    }
+
+    "return Left(LeavesKingInCheck) when move exposes king" in {
+      val board = Board.empty
+        .put(Position(0, 4), Piece.King(Color.White))
+        .put(Position(0, 0), Piece.Rook(Color.White))
+        .put(Position(0, 7), Piece.Rook(Color.Black))
+        .put(Position(7, 4), Piece.King(Color.Black))
+      val game = Game(board, Color.White, GameStatus.Playing)
+      val move = Move(Position(0, 0), Position(1, 0)) // rook moves off first rank, exposing king
+      game.applyMoveE(move) shouldBe Left(ChessError.LeavesKingInCheck(move))
+    }
+
+    "be consistent with applyMove (property)" in {
+      val game = Game.newGame
+      val moves = Seq(
+        Move(Position(1, 4), Position(3, 4)),  // valid
+        Move(Position(3, 3), Position(4, 3)),  // empty source
+        Move(Position(6, 4), Position(4, 4)),  // wrong color
+        Move(Position(1, 4), Position(4, 4))   // illegal pattern
+      )
+      for m <- moves do
+        game.applyMove(m) shouldBe game.applyMoveE(m).toOption
+    }
+  }
+
+  // ---------- GameStatus.isTerminal ----------
+
+  "GameStatus.isTerminal" should {
+    "return false for Playing" in {
+      GameStatus.Playing.isTerminal shouldBe false
+    }
+    "return false for Check" in {
+      GameStatus.Check.isTerminal shouldBe false
+    }
+    "return true for Checkmate" in {
+      GameStatus.Checkmate.isTerminal shouldBe true
+    }
+    "return true for Stalemate" in {
+      GameStatus.Stalemate.isTerminal shouldBe true
+    }
+    "return true for Resigned" in {
+      GameStatus.Resigned.isTerminal shouldBe true
+    }
+    "return true for Draw" in {
+      GameStatus.Draw.isTerminal shouldBe true
+    }
+  }
 }

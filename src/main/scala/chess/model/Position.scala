@@ -12,12 +12,15 @@ case class Position(row: Int, col: Int):
     else s"(?$row,$col)"
 
 object Position:
-  /** Parse algebraic notation like "e2" into a Position. */
-  def fromString(s: String): Option[Position] =
+  /** Parse algebraic notation like "e2" into a Position. Returns Left with error detail on failure. */
+  def fromStringE(s: String): Either[ChessError, Position] =
     s.trim.toLowerCase match
       case str if str.length == 2 =>
         val col = str(0) - 'a'
         val row = str(1).asDigit - 1
         val pos = Position(row, col)
-        if pos.isValid then Some(pos) else None
-      case _ => None
+        if pos.isValid then Right(pos) else Left(ChessError.InvalidPositionString(s))
+      case _ => Left(ChessError.InvalidPositionString(s))
+
+  /** Parse algebraic notation like "e2" into a Position. Returns None on invalid input. */
+  def fromString(s: String): Option[Position] = fromStringE(s).toOption

@@ -4,6 +4,7 @@ import chess.controller.ControllerInterface
 import chess.model.{Move, GameStatus}
 import chess.util.Observer
 import scala.io.StdIn
+import scala.util.{Try, Success, Failure}
 
 class TUI(controller: ControllerInterface) extends Observer:
   controller.add(this)
@@ -17,8 +18,9 @@ class TUI(controller: ControllerInterface) extends Observer:
     update()
     var running = true
     while running do
-      val input = StdIn.readLine("> ")
-      running = processInput(input)
+      Try(StdIn.readLine("> ")) match
+        case Success(input) => running = processInput(input)
+        case Failure(_)     => running = false
 
   def processInput(input: String): Boolean =
     input.trim match
@@ -31,20 +33,17 @@ class TUI(controller: ControllerInterface) extends Observer:
       case "" =>
         true
       case moveStr =>
-        val gameOver = controller.game.status match
-          case GameStatus.Checkmate | GameStatus.Stalemate | GameStatus.Resigned | GameStatus.Draw => true
-          case _ => false
-        if gameOver then
+        if controller.game.status.isTerminal then
           println("Spiel ist beendet. 'n' für neues Spiel oder 'q' zum Beenden.")
           true
         else
-          Move.fromString(moveStr) match
-            case Some(move) =>
-              if controller.doMove(move) then
-                true
-              else
-                println(s"Ungültiger Zug: $moveStr")
-                true
-            case None =>
-              println(s"Eingabe nicht erkannt: '$moveStr'. Format: 'e2 e4' oder 'e7 e8 Q'")
+          Move.fromStringT(moveStr) match
+            case Failure(ex) =>
+              println(s"Eingabe nicht erkannt: ${ex.getMessage}")
               true
+            case Success(move) =>
+              controller.doMoveResult(move) match
+                case Right(_)    => true
+                case Left(err)   =>
+                  println(s"Ungültiger Zug: ${err.message}")
+                  true

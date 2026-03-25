@@ -1,11 +1,18 @@
 package chess.aview
 
 import chess.controller.{Controller, ControllerInterface}
+import chess.model.{Board, Color, GameStatus, Piece, Position}
 import chess.util.Observer
 import org.scalatest.wordspec.AnyWordSpec
 import org.scalatest.matchers.should.Matchers
+import java.io.ByteArrayOutputStream
 
 class TUISpec extends AnyWordSpec with Matchers {
+
+  def captureOutput(block: => Unit): String =
+    val baos = new ByteArrayOutputStream()
+    scala.Console.withOut(baos)(block)
+    baos.toString
 
   "A TUI" should {
 
@@ -31,7 +38,7 @@ class TUISpec extends AnyWordSpec with Matchers {
       val controller = Controller()
       val tui = TUI(controller)
       tui.processInput("e2 e4") shouldBe true
-      controller.game.board.cell(chess.model.Position(3, 4)) shouldBe Some(chess.model.Piece.Pawn(chess.model.Color.White))
+      controller.game.board.cell(Position(3, 4)) shouldBe Some(Piece.Pawn(Color.White))
     }
 
     "process an invalid move and return true (continue)" in {
@@ -44,6 +51,33 @@ class TUISpec extends AnyWordSpec with Matchers {
       val controller = Controller()
       val tui = TUI(controller)
       tui.processInput("xyz") shouldBe true
+    }
+
+    "print error message for unparseable move format" in {
+      val controller = Controller()
+      val tui = TUI(controller)
+      val output = captureOutput { tui.processInput("xyz") }
+      output should include("nicht erkannt")
+    }
+
+    "print error message for invalid chess move" in {
+      val controller = Controller()
+      val tui = TUI(controller)
+      val output = captureOutput { tui.processInput("e5 e6") }
+      output should include("Ungültiger Zug")
+    }
+
+    "print 'Spiel ist beendet' when game is over (checkmate) and move is attempted" in {
+      val controller = Controller()
+      // Fool's Mate: 1.f3 e5 2.g4 Qh4# (fastest checkmate in chess)
+      controller.doMove(chess.model.Move(chess.model.Position(1,5), chess.model.Position(2,5))) // f2-f3
+      controller.doMove(chess.model.Move(chess.model.Position(6,4), chess.model.Position(4,4))) // e7-e5
+      controller.doMove(chess.model.Move(chess.model.Position(1,6), chess.model.Position(3,6))) // g2-g4
+      controller.doMove(chess.model.Move(chess.model.Position(7,3), chess.model.Position(3,7))) // Qd8-h4#
+      controller.game.status shouldBe chess.model.GameStatus.Checkmate
+      val tui = TUI(controller)
+      val output = captureOutput { tui.processInput("e2 e4") }
+      output should include("beendet")
     }
   }
 }

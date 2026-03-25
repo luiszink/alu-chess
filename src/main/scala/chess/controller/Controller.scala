@@ -1,6 +1,6 @@
 package chess.controller
 
-import chess.model.{Game, Board, Color, Move, GameStatus, Fen}
+import chess.model.{Game, Move, GameStatus, Fen, ChessError}
 import chess.util.{Observable, Observer}
 
 class Controller extends ControllerInterface with Observable:
@@ -12,21 +12,44 @@ class Controller extends ControllerInterface with Observable:
     _game = Game.newGame
     notifyObservers()
 
+  private def doMoveE(move: Move): Either[ChessError, Game] =
+    Either.cond(!_game.status.isTerminal, (), ChessError.GameAlreadyOver(_game.status))
+      .flatMap(_ => _game.applyMoveE(move))
+
   override def doMove(move: Move): Boolean =
-    _game.applyMove(move) match
-      case Some(updated) =>
+    doMoveE(move) match
+      case Right(updated) =>
         _game = updated
         notifyObservers()
         true
-      case None => false
+      case Left(_) => false
+
+  override def doMoveResult(move: Move): Either[ChessError, Game] =
+    doMoveE(move) match
+      case Right(updated) =>
+        _game = updated
+        notifyObservers()
+        Right(_game)
+      case Left(err) => Left(err)
+
+  private def loadFenE(fen: String): Either[ChessError, Game] =
+    Fen.parseE(fen)
 
   override def loadFen(fen: String): Boolean =
-    Fen.parse(fen) match
-      case Some(game) =>
+    loadFenE(fen) match
+      case Right(game) =>
         _game = game
         notifyObservers()
         true
-      case None => false
+      case Left(_) => false
+
+  override def loadFenResult(fen: String): Either[ChessError, Game] =
+    loadFenE(fen) match
+      case Right(game) =>
+        _game = game
+        notifyObservers()
+        Right(_game)
+      case Left(err) => Left(err)
 
   override def quit(): Unit =
     sys.exit(0)
