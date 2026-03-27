@@ -1,13 +1,13 @@
 package chess.model
 
 enum GameStatus:
-  case Playing, Check, Checkmate, Stalemate, Resigned, Draw
+  case Playing, Check, Checkmate, Stalemate, Resigned, Draw, TimeOut
 
   def isTerminal: Boolean = this match
-    case Checkmate | Stalemate | Resigned | Draw => true
+    case Checkmate | Stalemate | Resigned | Draw | TimeOut => true
     case _ => false
 
-case class Game(board: Board, currentPlayer: Color, status: GameStatus, movedPieces: Set[Position] = Set.empty, lastMove: Option[Move] = None, halfMoveClock: Int = 0):
+case class Game(board: Board, currentPlayer: Color, status: GameStatus, movedPieces: Set[Position] = Set.empty, lastMove: Option[Move] = None, halfMoveClock: Int = 0, moveHistory: Vector[MoveEntry] = Vector.empty, fullMoveNumber: Int = 1):
 
   def switchPlayer: Game =
     copy(currentPlayer = currentPlayer.opposite)
@@ -42,6 +42,11 @@ case class Game(board: Board, currentPlayer: Color, status: GameStatus, movedPie
     val isPawnMove = piece match { case Piece.Pawn(_) => true; case _ => false }
     val isCapture = board.cell(m.to).isDefined ||
       (isPawnMove && m.from.col != m.to.col && board.cell(m.to).isEmpty) // en passant
+    val captured: Option[Piece] = board.cell(m.to).orElse(
+      piece match
+        case Piece.Pawn(_) if m.from.col != m.to.col => board.cell(Position(m.from.row, m.to.col))
+        case _ => None
+    )
     val opponent = currentPlayer.opposite
     val newMovedPieces = movedPieces + m.from
     val newHalfMoveClock = if isPawnMove || isCapture then 0 else halfMoveClock + 1
@@ -54,8 +59,11 @@ case class Game(board: Board, currentPlayer: Color, status: GameStatus, movedPie
       else if newHalfMoveClock >= 100 then GameStatus.Draw
       else if opponentInCheck then GameStatus.Check
       else GameStatus.Playing
+    val entry = MoveEntry.create(m, piece, captured, board, newStatus, movedPieces, lastMove)
+    val newFullMoveNumber = if currentPlayer == Color.Black then fullMoveNumber + 1 else fullMoveNumber
     copy(board = fullBoard, currentPlayer = opponent, status = newStatus,
-      movedPieces = newMovedPieces, lastMove = Some(m), halfMoveClock = newHalfMoveClock)
+      movedPieces = newMovedPieces, lastMove = Some(m), halfMoveClock = newHalfMoveClock,
+      moveHistory = moveHistory :+ entry, fullMoveNumber = newFullMoveNumber)
 
   def resign: Game =
     copy(status = GameStatus.Resigned)
