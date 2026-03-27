@@ -5,7 +5,7 @@ import chess.util.Observer
 
 import scala.swing.*
 import java.awt.{Color as AwtColor, Dimension}
-import javax.swing.{UIManager, WindowConstants}
+import javax.swing.{UIManager, WindowConstants, Timer as SwingTimer}
 
 /** Main GUI window – lichess-inspired modern dark theme.
   * Registers as Observer on the Controller, same pattern as TUI. */
@@ -21,11 +21,20 @@ class SwingGUI(controller: ControllerInterface) extends Frame with Observer:
   resizable = false
 
   private val boardPanel = BoardPanel(controller)
+  private val historyPanel = HistoryPanel(controller)
+  private val clockPanel = ClockPanel(controller)
   private val sidePanel = SidePanel(
     controller,
     onNewGame = () => controller.newGame(),
-    onQuit = () => { dispose(); controller.quit() }
+    onQuit = () => { clockTimer.stop(); dispose(); controller.quit() }
   )
+
+  // Clock tick timer (100ms interval for smooth display)
+  private val clockTimer = new SwingTimer(100, _ => {
+    controller.tickClock()
+    clockPanel.refresh()
+  })
+  clockTimer.start()
 
   private val sideScroll = new ScrollPane(sidePanel):
     horizontalScrollBarPolicy = ScrollPane.BarPolicy.Never
@@ -33,10 +42,22 @@ class SwingGUI(controller: ControllerInterface) extends Frame with Observer:
     border = Swing.EmptyBorder(0, 0, 0, 0)
     preferredSize = new Dimension(332, 0)
 
+  // Left panel: clock + board
+  private val leftPanel = new BoxPanel(Orientation.Vertical):
+    background = new AwtColor(38, 36, 33)
+    contents += clockPanel
+    contents += boardPanel
+
+  // Right panel: history + side controls
+  private val rightPanel = new BoxPanel(Orientation.Vertical):
+    background = new AwtColor(38, 36, 33)
+    contents += historyPanel
+    contents += sideScroll
+
   contents = new BorderPanel:
     background = new AwtColor(38, 36, 33)
-    layout(boardPanel) = BorderPanel.Position.Center
-    layout(sideScroll) = BorderPanel.Position.East
+    layout(leftPanel) = BorderPanel.Position.Center
+    layout(rightPanel) = BorderPanel.Position.East
 
   peer.setDefaultCloseOperation(WindowConstants.EXIT_ON_CLOSE)
   pack()
@@ -44,8 +65,12 @@ class SwingGUI(controller: ControllerInterface) extends Frame with Observer:
   visible = true
 
   // Initial display
+  clockPanel.refresh()
+  historyPanel.refresh()
   sidePanel.refresh()
 
   override def update(): Unit =
     boardPanel.refresh()
+    historyPanel.refresh()
+    clockPanel.refresh()
     sidePanel.refresh()

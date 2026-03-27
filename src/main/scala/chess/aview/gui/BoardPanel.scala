@@ -176,10 +176,10 @@ class BoardPanel(controller: ControllerInterface, squareSize: Int = 72) extends 
     val game = controller.game
     val board = game.board
     val isGameOver = game.status match
-      case GameStatus.Checkmate | GameStatus.Stalemate | GameStatus.Resigned | GameStatus.Draw => true
+      case GameStatus.Checkmate | GameStatus.Stalemate | GameStatus.Resigned | GameStatus.Draw | GameStatus.TimeOut => true
       case _ => false
 
-    if isGameOver then return
+    if isGameOver || !controller.isAtLatest then return
 
     selectedSquare match
       case Some(from) if legalTargets.contains(pos) =>

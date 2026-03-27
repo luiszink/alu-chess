@@ -90,10 +90,10 @@ class HistoryPanel(controller: ControllerInterface) extends BoxPanel(Orientation
 
     fullHistory.grouped(2).zipWithIndex.foreach { (pair, pairIdx) =>
       val moveNum = pairIdx + 1
-      val row = new FlowPanel(FlowPanel.Alignment.Left):
-        background = panelBg
-        hGap = 0
-        vGap = 0
+      val row = new FlowPanel(FlowPanel.Alignment.Left)()
+      row.background = panelBg
+      row.hGap = 0
+      row.vGap = 0
 
       // Move number
       val numLabel = new Label(s"$moveNum."):
