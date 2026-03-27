@@ -28,7 +28,8 @@ object Fen:
         val enPassantStr = if parts.length > 3 then parts(3) else "-"
         val lastMove = parseEnPassant(enPassantStr)
         val halfMoveClock = if parts.length > 4 then parts(4).toIntOption.getOrElse(0) else 0
-        val initial = Game(board, color, GameStatus.Playing, movedPieces, lastMove, halfMoveClock)
+        val fullMoveNumber = if parts.length > 5 then parts(5).toIntOption.getOrElse(1) else 1
+        val initial = Game(board, color, GameStatus.Playing, movedPieces, lastMove, halfMoveClock, fullMoveNumber = fullMoveNumber)
         computeInitialStatus(initial)
       }
 
@@ -46,7 +47,7 @@ object Fen:
     val castlingStr = movedPiecesToCastling(game.board, game.movedPieces)
     val epStr = lastMoveToEnPassant(game.lastMove, game.board)
     val halfMove = game.halfMoveClock
-    val fullMove = 1 // simplified
+    val fullMove = game.fullMoveNumber
     s"$boardStr $colorStr $castlingStr $epStr $halfMove $fullMove"
 
   private def computeInitialStatus(game: Game): Game =
