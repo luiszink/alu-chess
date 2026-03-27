@@ -18,6 +18,10 @@ class SidePanel(controller: ControllerInterface, onNewGame: () => Unit, onQuit: 
   private val smallGap = 6
   private val sectionGap = 10
 
+  private val comboInputBg  = new AwtColor(55, 53, 50)
+  private val comboSelBg    = new AwtColor(90, 88, 85)
+  private val comboFg       = new AwtColor(230, 230, 230)
+
   background = new AwtColor(38, 36, 33)
   border = new EmptyBorder(8, 12, 8, 12)
 
@@ -28,13 +32,6 @@ class SidePanel(controller: ControllerInterface, onNewGame: () => Unit, onQuit: 
     val sep = new Separator
     sep.peer.setForeground(new AwtColor(65, 63, 60))
     sep
-
-  // --- Title ---
-  private val titleLabel = new Label("alu-chess"):
-    font = new Font("SansSerif", Font.BOLD, 22)
-    foreground = new AwtColor(230, 230, 230)
-    horizontalAlignment = Alignment.Center
-  centerAlign(titleLabel)
 
   // --- Status ---
   private val statusLabel = new Label(""):
@@ -139,10 +136,6 @@ class SidePanel(controller: ControllerInterface, onNewGame: () => Unit, onQuit: 
     font = new Font("SansSerif", Font.BOLD, 13)
     foreground = new AwtColor(180, 180, 180)
   centerAlign(timeControlLabel)
-
-  private val comboInputBg  = new AwtColor(55, 53, 50)
-  private val comboSelBg    = new AwtColor(90, 88, 85)
-  private val comboFg       = new AwtColor(230, 230, 230)
 
   private val tcOptions = Vector("Keine Uhr") ++ TimeControl.presets.map(_.name)
   private val timeControlCombo = new ComboBox(tcOptions):

@@ -36,20 +36,38 @@ class SwingGUI(controller: ControllerInterface) extends Frame with Observer:
   })
   clockTimer.start()
 
-  // Right panel: lichess-style – black clock, nav+history, white clock, controls
-  // Uses BorderPanel so history fills available space between clocks and controls
-  private val clockAndHistoryPanel = new BorderPanel:
+  // Player name labels (small, between clocks and history – like lichess)
+  private val blackNameLabel = new Label("  Schwarz"):
+    font = new java.awt.Font("SansSerif", java.awt.Font.PLAIN, 12)
+    foreground = new AwtColor(160, 160, 160)
+    opaque = true
     background = new AwtColor(38, 36, 33)
-    layout(clockPanel.blackClock) = BorderPanel.Position.North
-    layout(historyPanel) = BorderPanel.Position.Center
-    layout(clockPanel.whiteClock) = BorderPanel.Position.South
+  private val whiteNameLabel = new Label("  Weiß"):
+    font = new java.awt.Font("SansSerif", java.awt.Font.PLAIN, 12)
+    foreground = new AwtColor(160, 160, 160)
+    opaque = true
+    background = new AwtColor(38, 36, 33)
 
-  private val rightPanel = new BoxPanel(Orientation.Vertical):
+  // Top section: black clock + player name
+  private val topSection = new BoxPanel(Orientation.Vertical):
+    background = new AwtColor(38, 36, 33)
+    contents += clockPanel.blackClock
+    contents += blackNameLabel
+
+  // Bottom section: player name + white clock + compact controls
+  private val bottomSection = new BoxPanel(Orientation.Vertical):
+    background = new AwtColor(38, 36, 33)
+    contents += whiteNameLabel
+    contents += clockPanel.whiteClock
+    contents += sidePanel
+
+  // Right panel: BorderPanel so history fills all available vertical space
+  private val rightPanel = new BorderPanel:
     background = new AwtColor(38, 36, 33)
     preferredSize = new Dimension(300, boardPanel.preferredSize.height)
-    maximumSize = new Dimension(300, Short.MaxValue)
-    contents += clockAndHistoryPanel
-    contents += sidePanel
+    layout(topSection) = BorderPanel.Position.North
+    layout(historyPanel) = BorderPanel.Position.Center
+    layout(bottomSection) = BorderPanel.Position.South
 
   contents = new BorderPanel:
     background = new AwtColor(38, 36, 33)
