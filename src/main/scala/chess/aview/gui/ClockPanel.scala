@@ -10,15 +10,15 @@ import javax.swing.BorderFactory
 /** Single clock display for one player – placed above/below history like lichess. */
 class ClockDisplay extends Panel:
 
-  private val activeTimeBg = new AwtColor(186, 202, 68)  // lichess green for active
-  private val activeTimeFg = new AwtColor(20, 20, 20)
+  private val activeTimeBg = new AwtColor(48, 46, 43)   // dark bg for active clock
+  private val activeTimeFg = new AwtColor(255, 255, 255) // bright white text when active
   private val idleTimeBg   = new AwtColor(48, 46, 43)
-  private val idleTimeFg   = new AwtColor(180, 180, 180)
-  private val lowTimeBg    = new AwtColor(200, 60, 60)
-  private val lowTimeFg    = new AwtColor(255, 255, 255)
+  private val idleTimeFg   = new AwtColor(120, 120, 120) // dimmed for inactive
+  private val lowTimeBg    = new AwtColor(186, 202, 68)  // lichess green only for low time
+  private val lowTimeFg    = new AwtColor(20, 20, 20)    // dark text on green
   private val expiredBg    = new AwtColor(160, 40, 40)
 
-  private val timeFont = new Font("Monospaced", Font.BOLD, 26)
+  private val timeFont = new Font("Monospaced", Font.BOLD, 30)
 
   private val timeLabel = new Label("--:--"):
     font = timeFont
@@ -26,7 +26,7 @@ class ClockDisplay extends Panel:
     background = idleTimeBg
     opaque = true
     horizontalAlignment = Alignment.Right
-    border = BorderFactory.createEmptyBorder(4, 12, 4, 12)
+    border = BorderFactory.createEmptyBorder(8, 12, 8, 12)
 
   private val wrapper = new BorderPanel:
     background = new AwtColor(38, 36, 33)
@@ -34,16 +34,16 @@ class ClockDisplay extends Panel:
 
   peer.setLayout(new java.awt.BorderLayout)
   peer.add(wrapper.peer)
-  preferredSize = new Dimension(280, 40)
-  maximumSize = new Dimension(Short.MaxValue, 40)
-  minimumSize = new Dimension(200, 40)
+  preferredSize = new Dimension(300, 52)
+  maximumSize = new Dimension(Short.MaxValue, 52)
+  minimumSize = new Dimension(200, 52)
 
   def update(clock: ChessClock, color: Color): Unit =
     val remaining = clock.remainingMs(color)
     timeLabel.text = ChessClock.formatTime(remaining)
 
     val isActive = clock.activeColor.contains(color)
-    val isLow = remaining < 30_000 && remaining > 0
+    val isLow = remaining < 20_000 && remaining > 0
     val isExpired = remaining <= 0
 
     if isExpired then

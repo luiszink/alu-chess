@@ -13,15 +13,17 @@ import javax.swing.border.EmptyBorder
 /** Side panel showing game status, move info, and control buttons. */
 class SidePanel(controller: ControllerInterface, onNewGame: () => Unit, onQuit: () => Unit) extends BoxPanel(Orientation.Vertical):
 
-  private val panelWidth = 320
-  private val contentWidth = 250
+  private val panelWidth = 300
+  private val contentWidth = 268
   private val smallGap = 6
-  private val sectionGap = 14
+  private val sectionGap = 10
+
+  private val comboInputBg  = new AwtColor(55, 53, 50)
+  private val comboSelBg    = new AwtColor(90, 88, 85)
+  private val comboFg       = new AwtColor(230, 230, 230)
 
   background = new AwtColor(38, 36, 33)
-  preferredSize = new Dimension(panelWidth, 900)
-  minimumSize = new Dimension(panelWidth, 200)
-  border = new EmptyBorder(20, 16, 20, 16)
+  border = new EmptyBorder(8, 12, 8, 12)
 
   private def centerAlign(component: Component): Unit =
     component.xLayoutAlignment = 0.5
@@ -30,13 +32,6 @@ class SidePanel(controller: ControllerInterface, onNewGame: () => Unit, onQuit: 
     val sep = new Separator
     sep.peer.setForeground(new AwtColor(65, 63, 60))
     sep
-
-  // --- Title ---
-  private val titleLabel = new Label("alu-chess"):
-    font = new Font("SansSerif", Font.BOLD, 22)
-    foreground = new AwtColor(230, 230, 230)
-    horizontalAlignment = Alignment.Center
-  centerAlign(titleLabel)
 
   // --- Status ---
   private val statusLabel = new Label(""):
@@ -317,10 +312,6 @@ class SidePanel(controller: ControllerInterface, onNewGame: () => Unit, onQuit: 
 
   private val selectableTestPositions = TestPositions.positions.filter(_.fen.nonEmpty)
 
-  private val comboInputBg  = new AwtColor(55, 53, 50)
-  private val comboSelBg    = new AwtColor(90, 88, 85)
-  private val comboFg       = new AwtColor(230, 230, 230)
-
   private val positionCombo = new ComboBox(selectableTestPositions.map(_.name)):
     font = new Font("SansSerif", Font.PLAIN, 12)
     preferredSize = new Dimension(contentWidth, 30)
@@ -367,66 +358,93 @@ class SidePanel(controller: ControllerInterface, onNewGame: () => Unit, onQuit: 
         positionDescLabel.text = s"<html><center>${selectableTestPositions(idx).description}</center></html>"
   }
 
-  // Layout
-  contents += titleLabel
-  contents += Swing.VStrut(sectionGap)
-  contents += styledSeparator()
-  contents += Swing.VStrut(sectionGap)
+  // --- Werkzeuge dialog (lazy, created on first click) ---
+  private lazy val toolsDialog: javax.swing.JDialog = buildToolsDialog()
+
+  private def buildToolsDialog(): javax.swing.JDialog =
+    val parentWindow = Option(javax.swing.SwingUtilities.getWindowAncestor(peer))
+    val dialog = parentWindow match
+      case Some(w) => new javax.swing.JDialog(w, "Werkzeuge")
+      case None    => new javax.swing.JDialog(null: java.awt.Frame, "Werkzeuge")
+    dialog.getContentPane.setBackground(new java.awt.Color(38, 36, 33))
+    val panel = new BoxPanel(Orientation.Vertical):
+      background = new AwtColor(38, 36, 33)
+      border = new EmptyBorder(12, 12, 12, 12)
+      contents += fenInputLabel
+      contents += Swing.VStrut(4)
+      contents += fenInputField
+      contents += Swing.VStrut(4)
+      contents += fillFenButton
+      contents += Swing.VStrut(4)
+      contents += loadFenButton
+      contents += Swing.VStrut(10)
+      contents += styledSeparator()
+      contents += Swing.VStrut(10)
+      contents += testPositionLabel
+      contents += Swing.VStrut(4)
+      contents += positionCombo
+      contents += Swing.VStrut(4)
+      contents += positionDescLabel
+      contents += Swing.VStrut(4)
+      contents += loadPositionButton
+      contents += Swing.VStrut(10)
+      contents += styledSeparator()
+      contents += Swing.VStrut(10)
+      contents += pgnInputLabel
+      contents += Swing.VStrut(4)
+      contents += pgnHintLabel
+      contents += Swing.VStrut(4)
+      contents += pgnScrollPane
+      contents += Swing.VStrut(4)
+      contents += applyPgnButton
+      contents += Swing.VStrut(10)
+      contents += styledSeparator()
+      contents += Swing.VStrut(10)
+      contents += pgnSaveLabel
+      contents += Swing.VStrut(4)
+      contents += savePgnButton
+      contents += Swing.VStrut(4)
+      contents += loadPgnButton
+      contents += Swing.VStrut(10)
+    val scroll = new ScrollPane(panel):
+      horizontalScrollBarPolicy = ScrollPane.BarPolicy.Never
+      verticalScrollBarPolicy = ScrollPane.BarPolicy.AsNeeded
+      border = Swing.EmptyBorder(0, 0, 0, 0)
+      preferredSize = new Dimension(320, 560)
+      peer.getViewport.setBackground(new java.awt.Color(38, 36, 33))
+    dialog.add(scroll.peer)
+    dialog.pack()
+    dialog.setLocationRelativeTo(peer)
+    dialog
+
+  private def toggleToolsDialog(): Unit =
+    toolsDialog.setVisible(!toolsDialog.isVisible)
+
+  // --- Action row: compact buttons (Neues Spiel | Beenden | Werkzeuge) ---
+  private val actionRow = new Panel:
+    background = new AwtColor(38, 36, 33)
+    peer.setLayout(new java.awt.GridLayout(1, 3, 4, 0))
+    peer.add(newGameButton.peer)
+    peer.add(quitButton.peer)
+    peer.add(styledButton("⚙ Werkzeuge", () => toggleToolsDialog()).peer)
+  actionRow.preferredSize = new Dimension(contentWidth, 32)
+  actionRow.maximumSize = new Dimension(Short.MaxValue, 32)
+  centerAlign(actionRow)
+
+  // Compact layout – no scrolling needed
+  contents += Swing.VStrut(4)
   contents += playerLabel
-  contents += Swing.VStrut(smallGap)
+  contents += Swing.VStrut(2)
   contents += statusLabel
-  contents += Swing.VStrut(smallGap)
+  contents += Swing.VStrut(2)
   contents += moveLabel
   contents += Swing.VStrut(sectionGap)
   contents += styledSeparator()
-  contents += Swing.VStrut(sectionGap)
-  contents += timeControlLabel
   contents += Swing.VStrut(smallGap)
   contents += timeControlCombo
   contents += Swing.VStrut(smallGap)
-  contents += newGameButton
-  contents += Swing.VStrut(smallGap)
-  contents += quitButton
-  contents += Swing.VStrut(sectionGap)
-  contents += styledSeparator()
-  contents += Swing.VStrut(sectionGap)
-  contents += fenInputLabel
-  contents += Swing.VStrut(smallGap)
-  contents += fenInputField
-  contents += Swing.VStrut(smallGap)
-  contents += fillFenButton
-  contents += Swing.VStrut(smallGap)
-  contents += loadFenButton
-  contents += Swing.VStrut(sectionGap)
-  contents += styledSeparator()
-  contents += Swing.VStrut(sectionGap)
-  contents += testPositionLabel
-  contents += Swing.VStrut(smallGap)
-  contents += positionCombo
+  contents += actionRow
   contents += Swing.VStrut(4)
-  contents += positionDescLabel
-  contents += Swing.VStrut(smallGap)
-  contents += loadPositionButton
-  contents += Swing.VStrut(sectionGap)
-  contents += styledSeparator()
-  contents += Swing.VStrut(sectionGap)
-  contents += pgnInputLabel
-  contents += Swing.VStrut(4)
-  contents += pgnHintLabel
-  contents += Swing.VStrut(smallGap)
-  contents += pgnScrollPane
-  contents += Swing.VStrut(smallGap)
-  contents += applyPgnButton
-  contents += Swing.VStrut(sectionGap)
-  contents += styledSeparator()
-  contents += Swing.VStrut(sectionGap)
-  contents += pgnSaveLabel
-  contents += Swing.VStrut(smallGap)
-  contents += savePgnButton
-  contents += Swing.VStrut(smallGap)
-  contents += loadPgnButton
-  contents += Swing.VStrut(10)
-  contents += Swing.VGlue
 
   def refresh(): Unit =
     val game = controller.game

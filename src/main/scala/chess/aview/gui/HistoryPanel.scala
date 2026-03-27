@@ -1,7 +1,7 @@
 package chess.aview.gui
 
 import chess.controller.ControllerInterface
-import chess.model.{Color, MoveEntry}
+import chess.model.Color
 
 import scala.swing.*
 import java.awt.{Color as AwtColor, Font, Dimension, Cursor, GridBagLayout, GridBagConstraints, Insets}
@@ -29,7 +29,7 @@ class HistoryPanel(controller: ControllerInterface) extends BoxPanel(Orientation
   private val navFont  = new Font("SansSerif", Font.PLAIN, 14)
 
   private val rowHeight = 22
-  private val panelWidth = 280
+  private val panelWidth = 300
 
   background = panelBg
 
@@ -87,7 +87,7 @@ class HistoryPanel(controller: ControllerInterface) extends BoxPanel(Orientation
 
   def refresh(): Unit =
     moveListPanel.contents.clear()
-    val fullHistory = getFullHistory()
+    val fullHistory = controller.latestMoveHistory
     val browseIdx = controller.browseIndex
 
     fullHistory.grouped(2).zipWithIndex.foreach { (pair, pairIdx) =>
@@ -138,9 +138,6 @@ class HistoryPanel(controller: ControllerInterface) extends BoxPanel(Orientation
         val sb = scrollPane.peer.getVerticalScrollBar
         sb.setValue(sb.getMaximum)
       )
-
-  private def getFullHistory(): Vector[MoveEntry] =
-    controller.latestMoveHistory
 
   private def moveCell(san: String, stateIndex: Int, currentBrowse: Int, rowBg: AwtColor): Label =
     val isActive = stateIndex == currentBrowse

@@ -85,9 +85,10 @@ object ChessClock:
     )
 
   def formatTime(ms: Long): String =
-    val totalSeconds = math.max(0, ms) / 1000
+    val clamped = math.max(0L, ms)
+    val totalSeconds = clamped / 1000
     val minutes = totalSeconds / 60
     val seconds = totalSeconds % 60
-    val tenths = (math.max(0, ms) % 1000) / 100
-    if ms < 20_000 then f"$minutes:$seconds%02d.$tenths"
-    else f"$minutes:$seconds%02d"
+    val tenths = (clamped % 1000) / 100
+    if clamped < 20_000 then f"$minutes:$seconds%02d.$tenths"
+    else f"$minutes%02d:$seconds%02d"
