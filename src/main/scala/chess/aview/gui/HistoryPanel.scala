@@ -4,7 +4,7 @@ import chess.controller.ControllerInterface
 import chess.model.Color
 
 import scala.swing.*
-import java.awt.{Color as AwtColor, Font, Dimension, Cursor, GridBagLayout, GridBagConstraints, Insets}
+import java.awt.{Color as AwtColor, Font, Dimension, Cursor}
 import java.awt.event.{MouseAdapter, MouseEvent}
 import javax.swing.BorderFactory
 import javax.swing.{Timer as SwingTimer}

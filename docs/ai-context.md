@@ -7,7 +7,7 @@
 
 ## 1. Projektziel
 
-Entwicklung einer vereinfachten Schach-Applikation in Scala als Lehrprojekt im Kurs **Softwarearchitektur**.
+Entwicklung einer Schach-Applikation in Scala als Lehrprojekt im Kurs **Softwarearchitektur**.
 Inspiration: Lichess, aber wesentlich einfacher.
 Ziel: Inkrementelle Weiterentwicklung vom Monolith zu einer skalierbaren Architektur.
 
@@ -15,30 +15,33 @@ Ziel: Inkrementelle Weiterentwicklung vom Monolith zu einer skalierbaren Archite
 
 ## 2. Aktuelle Phase und Scope
 
-**Phase:** Woche 1–2 – Projektsetup, Grundstruktur und erste Zugmechanik
+**Phase:** Schachregeln vollständig, GUI fertig, Uhr und Partie-Archiv implementiert.
 
 **Implementiert:**
 - Monolith mit MVC-Architektur und Observer-Pattern
-- Text UI (TUI) mit Zugeingabe (`"e2 e4"`)
-- Funktionaler Stil im Domain-Layer (immutable, Option-basiert)
-- Domain-Typen: `Piece`, `Color`, `Position`, `Move`, `Board`, `Game`, `GameStatus`
-- `Board.move(Move)` gibt `Option[Board]` zurück
-- `Game.applyMove(Move)` validiert Figurfarbe und wechselt Spieler
-- `Controller.doMove` koordiniert Use Case und benachrichtigt Observer
-- 63 Tests in 7 Suites, CI-Pipeline auf GitHub Actions
+- Vollständige Schachregeln (alle Figurzüge, Rochade, En Passant, Bauernumwandlung)
+- Schach-, Schachmatt- und Patt-Erkennung
+- Remis-Bedingungen (50-Züge-Regel, unzureichendes Material)
+- Typisierte Fehlerbehandlung mit `Either[ChessError, _]` statt Exceptions
+- FEN-Parser und -Serializer (beliebige Stellungen laden/exportieren)
+- PGN-Export und -Replay (Standardformat für Partien)
+- SAN-Notation (Standard Algebraic Notation) für Zughistorie
+- Swing-GUI im Lichess-Stil (Board, Uhr, Historie, FEN-Eingabe, Testpositionen)
+- Text UI (TUI) mit algebraischer Notation (`e2 e4`, `e7 e8 Q`)
+- Schachuhr mit konfigurierbaren Zeitkontrollen (Bullet bis Classical)
+- History-Navigation im Controller (vor/zurück/Anfang/Ende/Zugauswahl)
+- Partie-Archiv mit In-Memory-Repository und Replay-Funktion
+- Testpositionen für schnelles Ausprobieren (Scholar's Mate, En Passant, Rochade, …)
+- 16 Test-Suites, CI-Pipeline auf GitHub Actions
 - Conventional Commits mit `.gitmessage`-Template
 
 **Nicht im Scope (geplant für spätere Phasen):**
-- Legale Züge pro Figurtyp (Turm, Läufer, Dame etc.)
-- Spezialzüge (En Passant, Rochade, Bauernumwandlung)
-- Schach/Matt/Patt-Erkennung
 - Command-Pattern (Undo/Redo)
 - HTTP-API / REST
 - Persistenz (Datenbank, Dateisystem)
 - Bot / KI-Gegner
-- GUI (ScalaFX oder Web)
 - Microservices
-- Performance-Optimierung
+- Dreifache Stellungswiederholung (Remis-Bedingung)
 
 ---
 
@@ -53,6 +56,8 @@ Ziel: Inkrementelle Weiterentwicklung vom Monolith zu einer skalierbaren Archite
 - Monolith modular halten
 - Struktur so vorbereiten, dass spätere Extraktion von Adaptern möglich ist
 - Observer-Pattern für MVC-Kommunikation
+- Fehlerbehandlung über `Either[ChessError, _]` – keine Exceptions im Domain-Layer
+- Repository-Trait als Abstraktion für Persistenz (aktuell In-Memory, später austauschbar)
 
 ---
 
@@ -67,6 +72,7 @@ Ziel: Inkrementelle Weiterentwicklung vom Monolith zu einer skalierbaren Archite
 - Kein Overengineering
 - Lesbarkeit vor Cleverness
 - Scala-3-Features nutzen (enum, @main, Extension Methods wo sinnvoll)
+- `Either` für fehlbare Operationen, `Try`-Monade statt try-catch
 
 ---
 
@@ -77,7 +83,8 @@ Ziel: Inkrementelle Weiterentwicklung vom Monolith zu einer skalierbaren Archite
 - Happy Path **und** Edge Cases testen
 - Tests sollen Verhalten beschreiben
 - Sinnvolle Coverage priorisieren, nicht künstliche Coverage
-- Ziel: 100% Coverage im Model-Layer
+- Coverage-Thresholds: ≥98% Statements, ≥85% Branches
+- GUI-Klassen (`chess.aview.gui.*`) und `Chess.scala` sind von Coverage ausgenommen
 
 ---
 
@@ -100,16 +107,17 @@ Ziel: Inkrementelle Weiterentwicklung vom Monolith zu einer skalierbaren Archite
 | Build Tool | sbt 1.10.7 |
 | Testing | ScalaTest 3.2.19 |
 | Coverage | sbt-scoverage 2.2.2 |
-| UI (aktuell) | TUI (Text) |
+| GUI | Scala Swing 3.0.0 |
+| UI (alternativ) | TUI (Text) |
 | Architektur | MVC + Observer |
 
 ---
 
 ## 8. Geplante Erweiterungen (Roadmap)
 
-1. Vollständige Schachregeln
+1. ~~Vollständige Schachregeln~~ ✅
 2. Command-Pattern (Undo/Redo)
-3. GUI (ScalaFX)
+3. ~~GUI~~ ✅ (Scala Swing)
 4. HTTP-API (z.B. http4s oder Play)
 5. Persistenz (Datei/DB)
 6. Bot-API

@@ -6,7 +6,6 @@ import chess.model.{Board, Color, Move, Piece, Position, GameStatus}
 import scala.swing.*
 import scala.swing.event.*
 import java.awt.{Color as AwtColor, Font, Graphics2D, RenderingHints, BasicStroke, GradientPaint}
-import java.awt.geom.{Ellipse2D, RoundRectangle2D}
 
 /** Panel that renders the chess board and handles piece selection/movement via clicks. */
 class BoardPanel(controller: ControllerInterface, squareSize: Int = 75) extends Panel:
