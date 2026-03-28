@@ -1,29 +1,37 @@
 package chess.controller
 
-import chess.model.{Game, Move, GameStatus, Fen, ChessError, ChessClock, TimeControl, MoveEntry}
+import chess.model.{Game, Move, GameStatus, Fen, ChessError, ChessClock, TimeControl, MoveEntry, GameRecord, GameRepository, InMemoryGameRepository}
 import chess.util.{Observable, Observer}
 
-class Controller extends ControllerInterface with Observable:
+class Controller(val repository: GameRepository = InMemoryGameRepository()) extends ControllerInterface with Observable:
   private var _game: Game = Game.newGame
   private var _gameStates: Vector[Game] = Vector(Game.newGame)
   private var _browseIdx: Int = 0
   private var _clock: Option[ChessClock] = None
+  private var _currentTimeControl: Option[TimeControl] = None
+  private var _inReplay: Boolean = false
+  private var _savedGameStates: Option[Vector[Game]] = None
+  private var _savedBrowseIdx: Option[Int] = None
 
   override def game: Game = _gameStates(_browseIdx)
 
   private def latestGame: Game = _gameStates.last
 
   override def newGame(): Unit =
+    if _inReplay then exitReplay()
     _game = Game.newGame
     _gameStates = Vector(Game.newGame)
     _browseIdx = 0
     _clock = None
+    _currentTimeControl = None
     notifyObservers()
 
   override def newGameWithClock(timeControl: Option[TimeControl]): Unit =
+    if _inReplay then exitReplay()
     _game = Game.newGame
     _gameStates = Vector(Game.newGame)
     _browseIdx = 0
+    _currentTimeControl = timeControl
     _clock = timeControl.map(tc => ChessClock.fromTimeControl(tc).start(System.nanoTime()))
     notifyObservers()
 
@@ -32,27 +40,31 @@ class Controller extends ControllerInterface with Observable:
       .flatMap(_ => latestGame.applyMoveE(move))
 
   override def doMove(move: Move): Boolean =
-    if !isAtLatest then return false
+    if !isAtLatest || _inReplay then return false
     doMoveE(move) match
       case Right(updated) =>
         _game = updated
         _gameStates = _gameStates :+ updated
         _browseIdx = _gameStates.size - 1
         _clock = _clock.map(_.press(System.nanoTime()))
-        if updated.status.isTerminal then _clock = _clock.map(_.stop)
+        if updated.status.isTerminal then
+          _clock = _clock.map(_.stop)
+          autoSave()
         notifyObservers()
         true
       case Left(_) => false
 
   override def doMoveResult(move: Move): Either[ChessError, Game] =
-    if !isAtLatest then return Left(ChessError.GameAlreadyOver(latestGame.status))
+    if !isAtLatest || _inReplay then return Left(ChessError.GameAlreadyOver(latestGame.status))
     doMoveE(move) match
       case Right(updated) =>
         _game = updated
         _gameStates = _gameStates :+ updated
         _browseIdx = _gameStates.size - 1
         _clock = _clock.map(_.press(System.nanoTime()))
-        if updated.status.isTerminal then _clock = _clock.map(_.stop)
+        if updated.status.isTerminal then
+          _clock = _clock.map(_.stop)
+          autoSave()
         notifyObservers()
         Right(_game)
       case Left(err) => Left(err)
@@ -157,6 +169,53 @@ class Controller extends ControllerInterface with Observable:
             _game = latestGame.copy(status = GameStatus.TimeOut)
             _gameStates = _gameStates.init :+ _game
             _browseIdx = _gameStates.size - 1
+            autoSave()
             notifyObservers()
           case None => // GUI refreshes clock display separately
       case _ => ()
+
+  // --- Auto-save finished games ---
+
+  private var _lastSavedStates: Option[Vector[Game]] = None
+
+  private def autoSave(): Unit =
+    if _inReplay then return
+    if _lastSavedStates.contains(_gameStates) then return
+    if _gameStates.size <= 1 then return
+    val record = GameRecord.create(_gameStates, _currentTimeControl)
+    repository.save(record)
+    _lastSavedStates = Some(_gameStates)
+
+  // --- Game history (past games) ---
+
+  override def gameHistory: Vector[GameRecord] = repository.findAll()
+
+  override def loadReplay(id: String): Boolean =
+    repository.findById(id) match
+      case Some(record) =>
+        if !_inReplay then
+          _savedGameStates = Some(_gameStates)
+          _savedBrowseIdx = Some(_browseIdx)
+        _gameStates = record.gameStates
+        _browseIdx = record.gameStates.size - 1
+        _clock = None
+        _inReplay = true
+        notifyObservers()
+        true
+      case None => false
+
+  override def isInReplay: Boolean = _inReplay
+
+  override def exitReplay(): Unit =
+    if !_inReplay then return
+    _savedGameStates match
+      case Some(states) =>
+        _gameStates = states
+        _browseIdx = _savedBrowseIdx.getOrElse(states.size - 1)
+      case None =>
+        _gameStates = Vector(Game.newGame)
+        _browseIdx = 0
+    _savedGameStates = None
+    _savedBrowseIdx = None
+    _inReplay = false
+    notifyObservers()

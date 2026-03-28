@@ -1,16 +1,19 @@
 package chess.aview.gui
 
 import scala.swing.*
-import java.awt.{Color as AwtColor, Font, Dimension, Cursor, FlowLayout}
+import java.awt.{Color as AwtColor, Font, Dimension, Cursor, FlowLayout, Image, Graphics2D, RenderingHints}
 import java.awt.event.{MouseAdapter, MouseEvent}
-import javax.swing.BorderFactory
+import java.awt.geom.Ellipse2D
+import java.awt.image.BufferedImage
+import javax.swing.{BorderFactory, ImageIcon}
+import javax.imageio.ImageIO
 
 /** Lichess-inspired top navigation bar.
   * Contains the logo on the left and view-switching items on the right.
   * `onHome` / `onGame` are called when the user clicks the respective nav item.
   * `onTools` opens the tools dialog when in game view.
   */
-class NavBar(onHome: () => Unit, onGame: () => Unit, onTools: () => Unit) extends Panel:
+class NavBar(onHome: () => Unit, onGame: () => Unit, onHistory: () => Unit, onTools: () => Unit) extends Panel:
 
   private val barBg    = new AwtColor(32, 30, 28)
   private val logoBg   = new AwtColor(32, 30, 28)
@@ -20,25 +23,46 @@ class NavBar(onHome: () => Unit, onGame: () => Unit, onTools: () => Unit) extend
   private val activeFg  = new AwtColor(255, 255, 255)
   private val activeUnderline = new AwtColor(186, 202, 68) // lichess green-yellow
 
-  private val logoFont = new Font("SansSerif", Font.BOLD, 22)
-  private val itemFont = new Font("SansSerif", Font.PLAIN, 15)
+  private val logoFont = new Font("SansSerif", Font.BOLD, 26)
+  private val itemFont = new Font("SansSerif", Font.BOLD, 17)
 
   background = barBg
-  preferredSize = new Dimension(Short.MaxValue, 40)
-  maximumSize  = new Dimension(Short.MaxValue, 40)
-  minimumSize  = new Dimension(400, 40)
+  preferredSize = new Dimension(Short.MaxValue, 48)
+  maximumSize  = new Dimension(Short.MaxValue, 48)
+  minimumSize  = new Dimension(400, 48)
 
   peer.setLayout(new java.awt.BorderLayout(0, 0))
   peer.setBackground(barBg)
 
+  // --- Logo icon from resources (round, zoomed) ---
+  private val logoIcon: Option[ImageIcon] =
+    try
+      Option(getClass.getResourceAsStream("/bg-chess-icon.png")).map { stream =>
+        val img = ImageIO.read(stream)
+        stream.close()
+        val sz = 34
+        val circle = new BufferedImage(sz, sz, BufferedImage.TYPE_INT_ARGB)
+        val g2 = circle.createGraphics()
+        g2.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON)
+        g2.setRenderingHint(RenderingHints.KEY_INTERPOLATION, RenderingHints.VALUE_INTERPOLATION_BILINEAR)
+        g2.setClip(new Ellipse2D.Float(0, 0, sz, sz))
+        g2.drawImage(img, 0, 0, sz, sz, null)
+        g2.dispose()
+        new ImageIcon(circle)
+      }
+    catch
+      case _: Exception => None
+
   // --- Logo (left) ---
-  private val logoLabel = new Label("♟ alu-chess"):
+  private val logoLabel = new Label("alu-chess"):
     font = logoFont
     foreground = logoFg
     background = logoBg
     opaque = true
     cursor = new Cursor(Cursor.HAND_CURSOR)
-    border = BorderFactory.createEmptyBorder(0, 16, 0, 20)
+    border = BorderFactory.createEmptyBorder(0, 12, 0, 20)
+  logoIcon.foreach(ic => logoLabel.icon = ic)
+  logoLabel.iconTextGap = 8
   logoLabel.peer.addMouseListener(new MouseAdapter:
     override def mouseClicked(e: MouseEvent): Unit = onHome()
   )
@@ -46,15 +70,26 @@ class NavBar(onHome: () => Unit, onGame: () => Unit, onTools: () => Unit) extend
   // --- Active view tracking ---
   private var activeView = "home"
 
-  // --- Nav item factory ---
-  private def navItem(text: String, viewKey: String, action: () => Unit): Label =
+  // --- Nav item factory (tab style with left separator) ---
+  private val sepColor = new AwtColor(55, 53, 50)
+
+  private def navItem(text: String, viewKey: String, action: () => Unit, first: Boolean = false): Label =
     val lbl = new Label(text):
       font = itemFont
       foreground = if activeView == viewKey then activeFg else itemFg
       background = barBg
       opaque = true
       cursor = new Cursor(Cursor.HAND_CURSOR)
-      border = BorderFactory.createEmptyBorder(0, 14, 0, 14)
+      border = if first then
+        BorderFactory.createCompoundBorder(
+          BorderFactory.createMatteBorder(0, 1, 0, 1, sepColor),
+          BorderFactory.createEmptyBorder(0, 16, 0, 16)
+        )
+      else
+        BorderFactory.createCompoundBorder(
+          BorderFactory.createMatteBorder(0, 0, 0, 1, sepColor),
+          BorderFactory.createEmptyBorder(0, 16, 0, 16)
+        )
     lbl.peer.addMouseListener(new MouseAdapter:
       override def mouseEntered(e: MouseEvent): Unit =
         lbl.foreground = itemHover
@@ -65,19 +100,20 @@ class NavBar(onHome: () => Unit, onGame: () => Unit, onTools: () => Unit) extend
     )
     lbl
 
-  private val homeItem  = navItem("Startseite", "home",  () => onHome())
-  private val gameItem  = navItem("Spiel",      "game",  () => onGame())
-  private val toolsItem = navItem("⚙",          "tools", () => onTools())
-  toolsItem.tooltip = "Werkzeuge"
+  private val homeItem    = navItem("Startseite", "home",    () => onHome(), first = true)
+  private val gameItem    = navItem("Spiel",      "game",    () => onGame())
+  private val historyItem = navItem("Verlauf",    "history", () => onHistory())
+  private val toolsItem   = navItem("Werkzeuge",  "tools",   () => onTools())
 
   // Right-side items container
   private val rightPanel = new Panel:
     background = barBg
     opaque = true
-    peer.setLayout(new FlowLayout(FlowLayout.LEFT, 0, 0))
+    peer.setLayout(new FlowLayout(FlowLayout.LEFT, 0, 8))
     peer.setBackground(barBg)
     peer.add(homeItem.peer)
     peer.add(gameItem.peer)
+    peer.add(historyItem.peer)
     peer.add(toolsItem.peer)
 
   peer.add(logoLabel.peer, java.awt.BorderLayout.WEST)
@@ -90,4 +126,5 @@ class NavBar(onHome: () => Unit, onGame: () => Unit, onTools: () => Unit) extend
     activeView = view
     homeItem.foreground = if view == "home" then activeFg else itemFg
     gameItem.foreground = if view == "game" then activeFg else itemFg
+    historyItem.foreground = if view == "history" then activeFg else itemFg
     repaint()

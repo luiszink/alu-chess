@@ -1,6 +1,6 @@
 package chess.controller
 
-import chess.model.{Game, Move, ChessError, MoveEntry, ChessClock, TimeControl}
+import chess.model.{Game, Move, ChessError, MoveEntry, ChessClock, TimeControl, GameRecord}
 import chess.util.Observer
 
 trait ControllerInterface:
@@ -30,3 +30,8 @@ trait ControllerInterface:
   // Clock
   def clock: Option[ChessClock]
   def tickClock(): Unit
+  // Game history (past games)
+  def gameHistory: Vector[GameRecord]
+  def loadReplay(id: String): Boolean
+  def isInReplay: Boolean
+  def exitReplay(): Unit

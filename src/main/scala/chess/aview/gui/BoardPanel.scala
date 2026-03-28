@@ -179,7 +179,7 @@ class BoardPanel(controller: ControllerInterface, squareSize: Int = 75) extends 
       case GameStatus.Checkmate | GameStatus.Stalemate | GameStatus.Resigned | GameStatus.Draw | GameStatus.TimeOut => true
       case _ => false
 
-    if isGameOver || !controller.isAtLatest then return
+    if isGameOver || !controller.isAtLatest || controller.isInReplay then return
 
     selectedSquare match
       case Some(from) if legalTargets.contains(pos) =>

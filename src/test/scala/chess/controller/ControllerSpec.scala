@@ -227,6 +227,110 @@ class ControllerSpec extends AnyWordSpec with Matchers {
     }
   }
 
+  "auto-save" should {
+
+    "save a game record after checkmate" in {
+      val repo = chess.model.InMemoryGameRepository()
+      val controller = Controller(repo)
+      // Fool's Mate: 1.f3 e5 2.g4 Qh4#
+      controller.doMove(Move(Position(1, 5), Position(2, 5))) // f2-f3
+      controller.doMove(Move(Position(6, 4), Position(4, 4))) // e7-e5
+      controller.doMove(Move(Position(1, 6), Position(3, 6))) // g2-g4
+      controller.doMove(Move(Position(7, 3), Position(3, 7))) // Qd8-h4#
+      controller.game.status shouldBe GameStatus.Checkmate
+      controller.gameHistory should have size 1
+      controller.gameHistory.head.result shouldBe "0-1"
+    }
+
+    "not save a game that has only the initial state" in {
+      val repo = chess.model.InMemoryGameRepository()
+      val controller = Controller(repo)
+      controller.newGame()
+      controller.gameHistory shouldBe empty
+    }
+
+    "not double-save the same game" in {
+      val repo = chess.model.InMemoryGameRepository()
+      val controller = Controller(repo)
+      // Fool's Mate
+      controller.doMove(Move(Position(1, 5), Position(2, 5)))
+      controller.doMove(Move(Position(6, 4), Position(4, 4)))
+      controller.doMove(Move(Position(1, 6), Position(3, 6)))
+      controller.doMove(Move(Position(7, 3), Position(3, 7)))
+      controller.game.status shouldBe GameStatus.Checkmate
+      // Try another move (should fail, game is over) — auto-save should not create a second record
+      controller.doMove(Move(Position(1, 4), Position(3, 4)))
+      controller.gameHistory should have size 1
+    }
+  }
+
+  "replay mode" should {
+
+    "block doMove during replay" in {
+      val repo = chess.model.InMemoryGameRepository()
+      val controller = Controller(repo)
+      // Play a game to completion (Fool's Mate)
+      controller.doMove(Move(Position(1, 5), Position(2, 5)))
+      controller.doMove(Move(Position(6, 4), Position(4, 4)))
+      controller.doMove(Move(Position(1, 6), Position(3, 6)))
+      controller.doMove(Move(Position(7, 3), Position(3, 7)))
+      val recordId = controller.gameHistory.head.id
+      controller.newGame()
+      // Load replay
+      controller.loadReplay(recordId) shouldBe true
+      controller.isInReplay shouldBe true
+      // Moves should be blocked
+      controller.doMove(Move(Position(1, 4), Position(3, 4))) shouldBe false
+    }
+
+    "load a replay and allow browsing" in {
+      val repo = chess.model.InMemoryGameRepository()
+      val controller = Controller(repo)
+      // Fool's Mate
+      controller.doMove(Move(Position(1, 5), Position(2, 5)))
+      controller.doMove(Move(Position(6, 4), Position(4, 4)))
+      controller.doMove(Move(Position(1, 6), Position(3, 6)))
+      controller.doMove(Move(Position(7, 3), Position(3, 7)))
+      val recordId = controller.gameHistory.head.id
+      controller.newGame()
+      controller.loadReplay(recordId) shouldBe true
+      // Should be at the end of the replayed game
+      controller.gameStatesCount shouldBe 5 // initial + 4 moves
+      controller.browseIndex shouldBe 4
+      // Browse back
+      controller.browseBack()
+      controller.browseIndex shouldBe 3
+    }
+
+    "exit replay and restore previous game state" in {
+      val repo = chess.model.InMemoryGameRepository()
+      val controller = Controller(repo)
+      // Play to checkmate (Fool's Mate)
+      controller.doMove(Move(Position(1, 5), Position(2, 5)))
+      controller.doMove(Move(Position(6, 4), Position(4, 4)))
+      controller.doMove(Move(Position(1, 6), Position(3, 6)))
+      controller.doMove(Move(Position(7, 3), Position(3, 7)))
+      val recordId = controller.gameHistory.head.id
+      // Start a new game and make one move
+      controller.newGame()
+      controller.doMove(Move(Position(1, 4), Position(3, 4))) // e2-e4
+      val statesBeforeReplay = controller.gameStatesCount
+      // Enter replay
+      controller.loadReplay(recordId) shouldBe true
+      controller.isInReplay shouldBe true
+      // Exit replay
+      controller.exitReplay()
+      controller.isInReplay shouldBe false
+      controller.gameStatesCount shouldBe statesBeforeReplay
+    }
+
+    "return false for unknown replay id" in {
+      val controller = Controller()
+      controller.loadReplay("nonexistent") shouldBe false
+      controller.isInReplay shouldBe false
+    }
+  }
+
   // --- History navigation ---
 
   "browseBack" should {

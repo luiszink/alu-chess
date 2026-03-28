@@ -451,16 +451,24 @@ class SidePanel(controller: ControllerInterface, onNewGame: () => Unit, onQuit: 
     val game = controller.game
     val isWhite = game.currentPlayer == chess.model.Color.White
 
+    // Update action row for replay mode
+    if controller.isInReplay then
+      newGameButton.text = "Zurück zum Verlauf"
+    else
+      newGameButton.text = "Neues Spiel"
+
     playerLabel.text = if isWhite then "⬜ Weiß" else "⬛ Schwarz"
 
-    statusLabel.text = game.status match
-      case GameStatus.Playing   => "am Zug"
-      case GameStatus.Check     => "Schach!"
-      case GameStatus.Checkmate => "Schachmatt!"
-      case GameStatus.Stalemate => "Patt – Remis"
-      case GameStatus.Resigned  => "Aufgegeben"
-      case GameStatus.Draw      => "Remis"
-      case GameStatus.TimeOut   => "Zeit abgelaufen!"
+    statusLabel.text =
+      if controller.isInReplay then "Replay"
+      else game.status match
+        case GameStatus.Playing   => "am Zug"
+        case GameStatus.Check     => "Schach!"
+        case GameStatus.Checkmate => "Schachmatt!"
+        case GameStatus.Stalemate => "Patt – Remis"
+        case GameStatus.Resigned  => "Aufgegeben"
+        case GameStatus.Draw      => "Remis"
+        case GameStatus.TimeOut   => "Zeit abgelaufen!"
 
     val isAlert = game.status == GameStatus.Check || game.status == GameStatus.Checkmate
     statusLabel.font = if isAlert then statusFontAlert else statusFontNormal

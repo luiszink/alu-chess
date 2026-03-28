@@ -42,6 +42,7 @@ class SwingGUI(controller: ControllerInterface) extends Frame with Observer:
   // --- CardLayout view switcher ---
   private val CardHome = "home"
   private val CardGame = "game"
+  private val CardHistory = "history"
 
   private val cardLayout = new CardLayout()
   private val cardPanel  = new Panel:
@@ -57,6 +58,25 @@ class SwingGUI(controller: ControllerInterface) extends Frame with Observer:
   private val startWrapper = new BorderPanel:
     background = darkBg
     layout(startPanel) = BorderPanel.Position.Center
+
+  // --- History list panel ---
+  private val historyListPanel = new HistoryListPanel(
+    controller,
+    onReplay = id => {
+      controller.loadReplay(id)
+      cardLayout.show(cardPanel.peer, CardGame)
+      navBar.setActive("game")
+      clockPanel.refresh()
+      historyPanel.refresh()
+      sidePanel.refresh()
+      boardPanel.refresh()
+      repaint()
+    }
+  )
+
+  private val historyWrapper = new BorderPanel:
+    background = darkBg
+    layout(historyListPanel) = BorderPanel.Position.Center
 
   // --- Game panel (same layout as before) ---
   private val blackNameLabel = new Label("  Schwarz"):
@@ -95,9 +115,10 @@ class SwingGUI(controller: ControllerInterface) extends Frame with Observer:
 
   // --- Nav bar ---
   private val navBar = new NavBar(
-    onHome  = () => showHomeView(),
-    onGame  = () => showGameView(None),
-    onTools = () => sidePanel.openToolsDialog()
+    onHome    = () => showHomeView(),
+    onGame    = () => showGameView(None),
+    onHistory = () => showHistoryView(),
+    onTools   = () => sidePanel.openToolsDialog()
   )
 
   // --- Root layout: NavBar (North) + CardPanel (Center) ---
@@ -110,6 +131,7 @@ class SwingGUI(controller: ControllerInterface) extends Frame with Observer:
 
   cardPanel.peer.add(startScroll.peer, CardHome)
   cardPanel.peer.add(gamePanel.peer,   CardGame)
+  cardPanel.peer.add(historyWrapper.peer, CardHistory)
 
   contents = new BorderPanel:
     background = darkBg
@@ -128,18 +150,27 @@ class SwingGUI(controller: ControllerInterface) extends Frame with Observer:
 
   // --- View switching helpers ---
   private def showHomeView(): Unit =
+    if controller.isInReplay then controller.exitReplay()
     cardLayout.show(cardPanel.peer, CardHome)
     navBar.setActive("home")
     repaint()
 
   private def showGameView(tc: Option[TimeControl]): Unit =
-    controller.newGameWithClock(tc)
+    if !controller.isInReplay then
+      controller.newGameWithClock(tc)
     cardLayout.show(cardPanel.peer, CardGame)
     navBar.setActive("game")
     clockPanel.refresh()
     historyPanel.refresh()
     sidePanel.refresh()
     boardPanel.refresh()
+    repaint()
+
+  private def showHistoryView(): Unit =
+    if controller.isInReplay then controller.exitReplay()
+    historyListPanel.refresh()
+    cardLayout.show(cardPanel.peer, CardHistory)
+    navBar.setActive("history")
     repaint()
 
   override def update(): Unit =

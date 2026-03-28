@@ -7,6 +7,7 @@ import scala.swing.*
 import java.awt.{Color as AwtColor, Font, Dimension, Cursor, GridBagLayout, GridBagConstraints, Insets}
 import java.awt.event.{MouseAdapter, MouseEvent}
 import javax.swing.BorderFactory
+import javax.swing.{Timer as SwingTimer}
 
 /** Lichess-style move history table with clickable moves and navigation buttons. */
 class HistoryPanel(controller: ControllerInterface) extends BoxPanel(Orientation.Vertical):
@@ -33,6 +34,31 @@ class HistoryPanel(controller: ControllerInterface) extends BoxPanel(Orientation
 
   background = panelBg
 
+  // --- Animated browsing ---
+  private var animTimer: Option[SwingTimer] = None
+
+  private def stopAnimation(): Unit =
+    animTimer.foreach(_.stop())
+    animTimer = None
+
+  private def animateTo(targetIdx: Int): Unit =
+    stopAnimation()
+    val current = controller.browseIndex
+    if current == targetIdx then return
+    val step = if targetIdx > current then 1 else -1
+    val timer = new SwingTimer(120, null)
+    timer.addActionListener(_ => {
+      val now = controller.browseIndex
+      if now == targetIdx then
+        stopAnimation()
+      else
+        if step > 0 then controller.browseForward()
+        else controller.browseBack()
+    })
+    timer.setInitialDelay(0)
+    timer.start()
+    animTimer = Some(timer)
+
   // --- Navigation buttons (thin row, subtle, like lichess) ---
   private def navButton(text: String, onClick: () => Unit): Label =
     val btn = new Label(text):
@@ -56,10 +82,10 @@ class HistoryPanel(controller: ControllerInterface) extends BoxPanel(Orientation
   private val navPanel = new Panel:
     background = navBg
     peer.setLayout(new java.awt.GridLayout(1, 4, 1, 0))
-    peer.add(navButton("⏮", () => controller.browseToStart()).peer)
-    peer.add(navButton("◀", () => controller.browseBack()).peer)
-    peer.add(navButton("▶", () => controller.browseForward()).peer)
-    peer.add(navButton("⏭", () => controller.browseToEnd()).peer)
+    peer.add(navButton("⏮", () => animateTo(0)).peer)
+    peer.add(navButton("◀", () => { stopAnimation(); controller.browseBack() }).peer)
+    peer.add(navButton("▶", () => { stopAnimation(); controller.browseForward() }).peer)
+    peer.add(navButton("⏭", () => animateTo(controller.gameStatesCount - 1)).peer)
   navPanel.preferredSize = new Dimension(panelWidth, 26)
   navPanel.maximumSize = new Dimension(Short.MaxValue, 26)
   navPanel.minimumSize = new Dimension(panelWidth, 26)
@@ -155,7 +181,12 @@ class HistoryPanel(controller: ControllerInterface) extends BoxPanel(Orientation
       override def mouseExited(e: MouseEvent): Unit =
         label.background = if stateIndex == controller.browseIndex then activeBg else rowBg
       override def mouseClicked(e: MouseEvent): Unit =
-        controller.browseToMove(stateIndex)
+        val distance = math.abs(stateIndex - controller.browseIndex)
+        if distance <= 1 then
+          stopAnimation()
+          controller.browseToMove(stateIndex)
+        else
+          animateTo(stateIndex)
     )
     label
 
