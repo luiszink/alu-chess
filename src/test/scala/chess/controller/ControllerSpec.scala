@@ -734,5 +734,93 @@ class ControllerSpec extends AnyWordSpec with Matchers {
       controller.gameStatesCount shouldBe 1
       controller.browseIndex shouldBe 0
     }
+
+    "exit replay mode when called during replay" in {
+      val repo = chess.model.InMemoryGameRepository()
+      val controller = Controller(repo)
+      // Play Fool's Mate to create a saved game
+      controller.doMove(Move(Position(1, 5), Position(2, 5)))
+      controller.doMove(Move(Position(6, 4), Position(4, 4)))
+      controller.doMove(Move(Position(1, 6), Position(3, 6)))
+      controller.doMove(Move(Position(7, 3), Position(3, 7)))
+      val recordId = controller.gameHistory.head.id
+      controller.newGame()
+      controller.loadReplay(recordId) shouldBe true
+      controller.isInReplay shouldBe true
+      // newGame should exit replay first
+      controller.newGame()
+      controller.isInReplay shouldBe false
+      controller.gameStatesCount shouldBe 1
+    }
+  }
+
+  "newGameWithClock" should {
+
+    "exit replay mode when called during replay" in {
+      val repo = chess.model.InMemoryGameRepository()
+      val controller = Controller(repo)
+      // Play Fool's Mate
+      controller.doMove(Move(Position(1, 5), Position(2, 5)))
+      controller.doMove(Move(Position(6, 4), Position(4, 4)))
+      controller.doMove(Move(Position(1, 6), Position(3, 6)))
+      controller.doMove(Move(Position(7, 3), Position(3, 7)))
+      val recordId = controller.gameHistory.head.id
+      controller.newGame()
+      controller.loadReplay(recordId) shouldBe true
+      controller.isInReplay shouldBe true
+      // newGameWithClock should exit replay first
+      controller.newGameWithClock(Some(TimeControl.Blitz5_0))
+      controller.isInReplay shouldBe false
+      controller.clock shouldBe defined
+    }
+  }
+
+  "doMoveResult during replay" should {
+    "return Left when in replay mode" in {
+      val repo = chess.model.InMemoryGameRepository()
+      val controller = Controller(repo)
+      // Play Fool's Mate
+      controller.doMove(Move(Position(1, 5), Position(2, 5)))
+      controller.doMove(Move(Position(6, 4), Position(4, 4)))
+      controller.doMove(Move(Position(1, 6), Position(3, 6)))
+      controller.doMove(Move(Position(7, 3), Position(3, 7)))
+      val recordId = controller.gameHistory.head.id
+      controller.newGame()
+      controller.loadReplay(recordId) shouldBe true
+      val result = controller.doMoveResult(Move(Position(1, 4), Position(3, 4)))
+      result shouldBe a[Left[?, ?]]
+    }
+  }
+
+  "loadReplay" should {
+    "switch replay without resetting savedGameStates when already in replay" in {
+      val repo = chess.model.InMemoryGameRepository()
+      val controller = Controller(repo)
+      // Play two games to create two records
+      // Game 1: Fool's Mate
+      controller.doMove(Move(Position(1, 5), Position(2, 5)))
+      controller.doMove(Move(Position(6, 4), Position(4, 4)))
+      controller.doMove(Move(Position(1, 6), Position(3, 6)))
+      controller.doMove(Move(Position(7, 3), Position(3, 7)))
+      val id1 = controller.gameHistory.head.id
+      // Game 2: another Fool's Mate
+      controller.newGame()
+      controller.doMove(Move(Position(1, 5), Position(2, 5)))
+      controller.doMove(Move(Position(6, 4), Position(4, 4)))
+      controller.doMove(Move(Position(1, 6), Position(3, 6)))
+      controller.doMove(Move(Position(7, 3), Position(3, 7)))
+      val id2 = controller.gameHistory.last.id
+      controller.newGame()
+      // Load first replay
+      controller.loadReplay(id1) shouldBe true
+      controller.isInReplay shouldBe true
+      // Load second replay while still in first replay
+      controller.loadReplay(id2) shouldBe true
+      controller.isInReplay shouldBe true
+      // Exit should restore the original state (before first loadReplay)
+      controller.exitReplay()
+      controller.isInReplay shouldBe false
+      controller.gameStatesCount shouldBe 1
+    }
   }
 }
