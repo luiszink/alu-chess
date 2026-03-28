@@ -44,5 +44,48 @@ class GameRecordSpec extends AnyWordSpec with Matchers {
       val record = GameRecord.create(states, Some(tc))
       record.timeControl shouldBe Some(tc)
     }
+
+    "set result to 1-0 when Black is checkmated (White wins)" in {
+      // Black is mated → currentPlayer is Black → else branch → "1-0"
+      val game = Game(Board.initial, Color.Black, GameStatus.Checkmate, Set.empty)
+      val states = Vector(Game.newGame, game)
+      val record = GameRecord.create(states, None)
+      record.result shouldBe "1-0"
+    }
+
+    "set result to 0-1 for TimeOut when White's turn (Black wins)" in {
+      val game = Game(Board.initial, Color.White, GameStatus.TimeOut, Set.empty)
+      val states = Vector(Game.newGame, game)
+      val record = GameRecord.create(states, None)
+      record.result shouldBe "0-1"
+    }
+
+    "set result to 1-0 for TimeOut when Black's turn (White wins)" in {
+      val game = Game(Board.initial, Color.Black, GameStatus.TimeOut, Set.empty)
+      val states = Vector(Game.newGame, game)
+      val record = GameRecord.create(states, None)
+      record.result shouldBe "1-0"
+    }
+
+    "set result to 0-1 for Resigned when White's turn (Black wins)" in {
+      val game = Game(Board.initial, Color.White, GameStatus.Resigned, Set.empty)
+      val states = Vector(Game.newGame, game)
+      val record = GameRecord.create(states, None)
+      record.result shouldBe "0-1"
+    }
+
+    "set result to 1-0 for Resigned when Black's turn (White wins)" in {
+      val game = Game(Board.initial, Color.Black, GameStatus.Resigned, Set.empty)
+      val states = Vector(Game.newGame, game)
+      val record = GameRecord.create(states, None)
+      record.result shouldBe "1-0"
+    }
+
+    "set result to ½-½ for a Draw" in {
+      val game = Game(Board.initial, Color.White, GameStatus.Draw, Set.empty)
+      val states = Vector(Game.newGame, game)
+      val record = GameRecord.create(states, None)
+      record.result shouldBe "½-½"
+    }
   }
 }
