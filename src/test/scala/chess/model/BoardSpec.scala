@@ -130,6 +130,12 @@ class BoardSpec extends AnyWordSpec with Matchers {
     "return None for an empty position" in {
       Board.empty.cell(Position(0, 0)) shouldBe None
     }
+
+    "return None for out-of-bounds coordinates" in {
+      Board.empty.cell(-1, 0) shouldBe None
+      Board.empty.cell(0, 8) shouldBe None
+      Board.empty.cell(8, 0) shouldBe None
+    }
   }
 
   "Board.put(Position)" should {

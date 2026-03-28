@@ -17,3 +17,6 @@ desktop.ini
 
 # Coverage reports
 scoverage-report/
+target/
+project/target/
+project/project/

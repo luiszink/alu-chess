@@ -88,7 +88,9 @@ class Controller extends ControllerInterface with Observable:
   // $COVERAGE-ON$
 
   override def resign(): Unit =
-    _game = _game.resign
+    _game = latestGame.resign
+    _gameStates = _gameStates.init :+ _game
+    _browseIdx = _gameStates.size - 1
     notifyObservers()
 
   override def boardToString: String =

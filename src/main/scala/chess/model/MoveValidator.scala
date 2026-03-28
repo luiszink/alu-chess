@@ -272,5 +272,7 @@ object MoveValidator:
         case Some(newBoard) =>
           val fullBoard = applyMoveEffects(move, board, newBoard)
           !isInCheck(fullBoard, color)
+        // $COVERAGE-OFF$ allMoves already ensures a piece exists at from
         case None => false
+        // $COVERAGE-ON$
     }.toList

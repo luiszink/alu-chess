@@ -463,5 +463,72 @@ class GameSpec extends AnyWordSpec with Matchers {
     "return true for Draw" in {
       GameStatus.Draw.isTerminal shouldBe true
     }
+    "return true for TimeOut" in {
+      GameStatus.TimeOut.isTerminal shouldBe true
+    }
+  }
+
+  // ---------- MoveHistory ----------
+
+  "moveHistory" should {
+
+    "be empty for new game" in {
+      Game.newGame.moveHistory shouldBe empty
+    }
+
+    "record moves as MoveEntry" in {
+      val game = Game.newGame
+        .applyMove(Move(Position(1, 4), Position(3, 4))).get // e4
+      game.moveHistory should have size 1
+      game.moveHistory.head.san shouldBe "e4"
+    }
+
+    "record multiple moves" in {
+      val game = Game.newGame
+        .applyMove(Move(Position(1, 4), Position(3, 4))).get // e4
+        .applyMove(Move(Position(6, 4), Position(4, 4))).get // e5
+      game.moveHistory should have size 2
+    }
+  }
+
+  // ---------- fullMoveNumber ----------
+
+  "fullMoveNumber" should {
+
+    "start at 1" in {
+      Game.newGame.fullMoveNumber shouldBe 1
+    }
+
+    "stay 1 after white's move" in {
+      val game = Game.newGame
+        .applyMove(Move(Position(1, 4), Position(3, 4))).get
+      game.fullMoveNumber shouldBe 1
+    }
+
+    "increment to 2 after black's move" in {
+      val game = Game.newGame
+        .applyMove(Move(Position(1, 4), Position(3, 4))).get
+        .applyMove(Move(Position(6, 4), Position(4, 4))).get
+      game.fullMoveNumber shouldBe 2
+    }
+  }
+
+  // ---------- captured piece tracking ----------
+
+  "computeUpdatedGame captured piece" should {
+
+    "track en passant capture" in {
+      val board = Board.empty
+        .put(Position(4, 4), Piece.Pawn(Color.White))
+        .put(Position(4, 3), Piece.Pawn(Color.Black))
+        .put(Position(0, 4), Piece.King(Color.White))
+        .put(Position(7, 4), Piece.King(Color.Black))
+      val lastMove = Some(Move(Position(6, 3), Position(4, 3)))
+      val game = Game(board, Color.White, GameStatus.Playing, lastMove = lastMove)
+      val move = Move(Position(4, 4), Position(5, 3))
+      val result = game.applyMove(move).get
+      // The en passant capture should be recorded in moveHistory
+      result.moveHistory.last.captured shouldBe Some(Piece.Pawn(Color.Black))
+    }
   }
 }

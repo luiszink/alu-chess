@@ -64,7 +64,9 @@ object MoveEntry:
     case Piece.Rook(_)   => "R"
     case Piece.Bishop(_) => "B"
     case Piece.Knight(_) => "N"
+    // $COVERAGE-OFF$ Pawns use a separate SAN path; this method is only called for non-Pawn pieces
     case _               => ""
+    // $COVERAGE-ON$
 
   private def disambiguation(
     move: Move,
@@ -90,10 +92,14 @@ object MoveEntry:
 
   private def samePieceType(a: Piece, b: Piece): Boolean =
     (a, b) match
+      // $COVERAGE-OFF$ Kings and Pawns never go through disambiguation (one king per color, pawns use separate SAN path)
       case (Piece.King(_), Piece.King(_))     => true
+      // $COVERAGE-ON$
       case (Piece.Queen(_), Piece.Queen(_))   => true
       case (Piece.Rook(_), Piece.Rook(_))     => true
       case (Piece.Bishop(_), Piece.Bishop(_)) => true
       case (Piece.Knight(_), Piece.Knight(_)) => true
+      // $COVERAGE-OFF$ Pawns use a separate SAN path in toSAN
       case (Piece.Pawn(_), Piece.Pawn(_))     => true
+      // $COVERAGE-ON$
       case _                                  => false

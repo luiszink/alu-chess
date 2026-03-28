@@ -1,6 +1,6 @@
 package chess.controller
 
-import chess.model.{Game, Color, Board, Move, Position, GameStatus, ChessError, Piece}
+import chess.model.{Game, Color, Board, Move, Position, GameStatus, ChessError, Piece, TimeControl, ChessClock}
 import chess.util.Observer
 import org.scalatest.wordspec.AnyWordSpec
 import org.scalatest.matchers.should.Matchers
@@ -224,6 +224,412 @@ class ControllerSpec extends AnyWordSpec with Matchers {
       controller.add(observer)
       controller.loadFenResult("8/8/8/8/8/8/8/4K3 w - - 0 1")
       notified shouldBe true
+    }
+  }
+
+  // --- History navigation ---
+
+  "browseBack" should {
+
+    "go to previous state" in {
+      val controller = Controller()
+      controller.doMove(Move(Position(1, 4), Position(3, 4))) // e2-e4
+      controller.browseIndex shouldBe 1
+      controller.browseBack()
+      controller.browseIndex shouldBe 0
+    }
+
+    "not go below 0" in {
+      val controller = Controller()
+      controller.browseBack()
+      controller.browseIndex shouldBe 0
+    }
+
+    "notify observers" in {
+      val controller = Controller()
+      controller.doMove(Move(Position(1, 4), Position(3, 4)))
+      var notified = false
+      val observer = new Observer:
+        override def update(): Unit = notified = true
+      controller.add(observer)
+      controller.browseBack()
+      notified shouldBe true
+    }
+
+    "not notify when already at start" in {
+      val controller = Controller()
+      var notified = false
+      val observer = new Observer:
+        override def update(): Unit = notified = true
+      controller.add(observer)
+      controller.browseBack()
+      notified shouldBe false
+    }
+  }
+
+  "browseForward" should {
+
+    "go to next state" in {
+      val controller = Controller()
+      controller.doMove(Move(Position(1, 4), Position(3, 4)))
+      controller.browseBack()
+      controller.browseIndex shouldBe 0
+      controller.browseForward()
+      controller.browseIndex shouldBe 1
+    }
+
+    "not go beyond latest" in {
+      val controller = Controller()
+      controller.browseForward()
+      controller.browseIndex shouldBe 0
+    }
+
+    "not notify when already at end" in {
+      val controller = Controller()
+      var notified = false
+      val observer = new Observer:
+        override def update(): Unit = notified = true
+      controller.add(observer)
+      controller.browseForward()
+      notified shouldBe false
+    }
+  }
+
+  "browseToStart" should {
+
+    "jump to index 0" in {
+      val controller = Controller()
+      controller.doMove(Move(Position(1, 4), Position(3, 4)))
+      controller.doMove(Move(Position(6, 4), Position(4, 4)))
+      controller.browseToStart()
+      controller.browseIndex shouldBe 0
+    }
+
+    "not notify when already at start" in {
+      val controller = Controller()
+      var notified = false
+      val observer = new Observer:
+        override def update(): Unit = notified = true
+      controller.add(observer)
+      controller.browseToStart()
+      notified shouldBe false
+    }
+  }
+
+  "browseToEnd" should {
+
+    "jump to latest index" in {
+      val controller = Controller()
+      controller.doMove(Move(Position(1, 4), Position(3, 4)))
+      controller.doMove(Move(Position(6, 4), Position(4, 4)))
+      controller.browseToStart()
+      controller.browseToEnd()
+      controller.browseIndex shouldBe 2
+      controller.isAtLatest shouldBe true
+    }
+
+    "not notify when already at end" in {
+      val controller = Controller()
+      var notified = false
+      val observer = new Observer:
+        override def update(): Unit = notified = true
+      controller.add(observer)
+      controller.browseToEnd()
+      notified shouldBe false
+    }
+  }
+
+  "browseToMove" should {
+
+    "jump to a specific index" in {
+      val controller = Controller()
+      controller.doMove(Move(Position(1, 4), Position(3, 4)))
+      controller.doMove(Move(Position(6, 4), Position(4, 4)))
+      controller.browseToMove(1)
+      controller.browseIndex shouldBe 1
+    }
+
+    "clamp to 0 if negative" in {
+      val controller = Controller()
+      controller.doMove(Move(Position(1, 4), Position(3, 4)))
+      controller.browseToMove(-5)
+      controller.browseIndex shouldBe 0
+    }
+
+    "clamp to max if too large" in {
+      val controller = Controller()
+      controller.doMove(Move(Position(1, 4), Position(3, 4)))
+      controller.browseToMove(999)
+      controller.browseIndex shouldBe 1
+    }
+
+    "not notify when index doesn't change" in {
+      val controller = Controller()
+      var notified = false
+      val observer = new Observer:
+        override def update(): Unit = notified = true
+      controller.add(observer)
+      controller.browseToMove(0)
+      notified shouldBe false
+    }
+  }
+
+  "isAtLatest" should {
+    "return true for new game" in {
+      Controller().isAtLatest shouldBe true
+    }
+
+    "return false after browseBack" in {
+      val controller = Controller()
+      controller.doMove(Move(Position(1, 4), Position(3, 4)))
+      controller.browseBack()
+      controller.isAtLatest shouldBe false
+    }
+  }
+
+  "gameStatesCount" should {
+    "be 1 for new game" in {
+      Controller().gameStatesCount shouldBe 1
+    }
+
+    "increase after moves" in {
+      val controller = Controller()
+      controller.doMove(Move(Position(1, 4), Position(3, 4)))
+      controller.gameStatesCount shouldBe 2
+    }
+  }
+
+  "latestMoveHistory" should {
+    "be empty for new game" in {
+      Controller().latestMoveHistory shouldBe empty
+    }
+
+    "contain entries after moves" in {
+      val controller = Controller()
+      controller.doMove(Move(Position(1, 4), Position(3, 4)))
+      controller.latestMoveHistory should have size 1
+    }
+  }
+
+  // --- doMove when not at latest ---
+
+  "doMove when not at latest" should {
+    "reject the move" in {
+      val controller = Controller()
+      controller.doMove(Move(Position(1, 4), Position(3, 4)))
+      controller.browseBack()
+      controller.doMove(Move(Position(1, 3), Position(3, 3))) shouldBe false
+    }
+  }
+
+  "doMoveResult when not at latest" should {
+    "return Left(GameAlreadyOver)" in {
+      val controller = Controller()
+      controller.doMove(Move(Position(1, 4), Position(3, 4)))
+      controller.browseBack()
+      controller.doMoveResult(Move(Position(1, 3), Position(3, 3))) shouldBe a[Left[?, ?]]
+    }
+  }
+
+  // --- Clock ---
+
+  "newGameWithClock" should {
+
+    "create a game with a clock" in {
+      val controller = Controller()
+      controller.newGameWithClock(Some(TimeControl.Blitz5_0))
+      controller.clock shouldBe defined
+      controller.game.board shouldBe Board.initial
+    }
+
+    "create a game without clock when None" in {
+      val controller = Controller()
+      controller.newGameWithClock(None)
+      controller.clock shouldBe None
+    }
+
+    "reset game states" in {
+      val controller = Controller()
+      controller.doMove(Move(Position(1, 4), Position(3, 4)))
+      controller.newGameWithClock(Some(TimeControl.Blitz5_0))
+      controller.gameStatesCount shouldBe 1
+      controller.browseIndex shouldBe 0
+    }
+
+    "notify observers" in {
+      val controller = Controller()
+      var notified = false
+      val observer = new Observer:
+        override def update(): Unit = notified = true
+      controller.add(observer)
+      controller.newGameWithClock(Some(TimeControl.Blitz5_0))
+      notified shouldBe true
+    }
+  }
+
+  "clock" should {
+
+    "return ticked clock when active" in {
+      val controller = Controller()
+      controller.newGameWithClock(Some(TimeControl.Blitz5_0))
+      val clock = controller.clock
+      clock shouldBe defined
+    }
+
+    "return None when no clock" in {
+      val controller = Controller()
+      controller.clock shouldBe None
+    }
+  }
+
+  "tickClock" should {
+
+    "do nothing when no clock" in {
+      val controller = Controller()
+      controller.tickClock() // should not throw
+      controller.clock shouldBe None
+    }
+
+    "do nothing when game is terminal" in {
+      val controller = Controller()
+      controller.newGameWithClock(Some(TimeControl.Blitz5_0))
+      // Fool's Mate
+      controller.doMove(Move(Position(1, 5), Position(2, 5)))
+      controller.doMove(Move(Position(6, 4), Position(4, 4)))
+      controller.doMove(Move(Position(1, 6), Position(3, 6)))
+      controller.doMove(Move(Position(7, 3), Position(3, 7)))
+      controller.game.status shouldBe GameStatus.Checkmate
+      controller.tickClock() // should not throw
+    }
+
+    "trigger timeout when clock expires" in {
+      val controller = Controller()
+      // Use reflection to set a clock with very little time
+      controller.newGameWithClock(Some(TimeControl.Blitz5_0))
+      // Replace the clock with one that has already expired
+      val expiredClock = ChessClock(0L, 300_000L, 0L, Some(Color.White), System.nanoTime())
+      val field = controller.getClass.getDeclaredField("_clock")
+      field.setAccessible(true)
+      field.set(controller, Some(expiredClock))
+      controller.tickClock()
+      controller.game.status shouldBe GameStatus.TimeOut
+    }
+
+    "not trigger timeout when time is positive" in {
+      val controller = Controller()
+      controller.newGameWithClock(Some(TimeControl.Blitz5_0))
+      controller.tickClock()
+      controller.game.status shouldBe GameStatus.Playing
+    }
+  }
+
+  "statusText for TimeOut" should {
+    "include 'Zeit abgelaufen'" in {
+      val controller = Controller()
+      controller.newGameWithClock(Some(TimeControl.Blitz5_0))
+      // Force a timeout via clock
+      val expiredClock = ChessClock(0L, 300_000L, 0L, Some(Color.White), System.nanoTime())
+      val field = controller.getClass.getDeclaredField("_clock")
+      field.setAccessible(true)
+      field.set(controller, Some(expiredClock))
+      controller.tickClock()
+      controller.game.status shouldBe GameStatus.TimeOut
+      controller.statusText should include("Zeit abgelaufen")
+    }
+  }
+
+  "doMove with clock" should {
+
+    "press clock after successful move" in {
+      val controller = Controller()
+      controller.newGameWithClock(Some(TimeControl.Blitz5_0))
+      controller.doMove(Move(Position(1, 4), Position(3, 4)))
+      val clock = controller.clock
+      clock shouldBe defined
+      // After pressing, black should be active
+      clock.get.activeColor shouldBe Some(Color.Black)
+    }
+
+    "stop clock on terminal state" in {
+      val controller = Controller()
+      controller.newGameWithClock(Some(TimeControl.Blitz5_0))
+      // Fool's Mate
+      controller.doMove(Move(Position(1, 5), Position(2, 5)))
+      controller.doMove(Move(Position(6, 4), Position(4, 4)))
+      controller.doMove(Move(Position(1, 6), Position(3, 6)))
+      controller.doMove(Move(Position(7, 3), Position(3, 7)))
+      controller.game.status shouldBe GameStatus.Checkmate
+      val clock = controller.clock
+      clock shouldBe defined
+      clock.get.activeColor shouldBe None
+    }
+  }
+
+  "doMoveResult with clock" should {
+
+    "press clock after successful move" in {
+      val controller = Controller()
+      controller.newGameWithClock(Some(TimeControl.Blitz5_0))
+      val result = controller.doMoveResult(Move(Position(1, 4), Position(3, 4)))
+      result shouldBe a[Right[?, ?]]
+      controller.clock.get.activeColor shouldBe Some(Color.Black)
+    }
+
+    "stop clock on checkmate" in {
+      val controller = Controller()
+      controller.newGameWithClock(Some(TimeControl.Blitz5_0))
+      // Fool's Mate via doMoveResult
+      controller.doMoveResult(Move(Position(1, 5), Position(2, 5)))
+      controller.doMoveResult(Move(Position(6, 4), Position(4, 4)))
+      controller.doMoveResult(Move(Position(1, 6), Position(3, 6)))
+      val result = controller.doMoveResult(Move(Position(7, 3), Position(3, 7)))
+      result shouldBe a[Right[?, ?]]
+      controller.game.status shouldBe GameStatus.Checkmate
+      controller.clock.get.activeColor shouldBe None
+    }
+  }
+
+  "loadFen" should {
+
+    "reset clock to None" in {
+      val controller = Controller()
+      controller.newGameWithClock(Some(TimeControl.Blitz5_0))
+      controller.loadFen("8/8/8/8/8/8/8/4K3 w - - 0 1")
+      controller.clock shouldBe None
+    }
+
+    "reset game states" in {
+      val controller = Controller()
+      controller.doMove(Move(Position(1, 4), Position(3, 4)))
+      controller.loadFen("8/8/8/8/8/8/8/4K3 w - - 0 1")
+      controller.gameStatesCount shouldBe 1
+    }
+  }
+
+  "loadFenResult" should {
+
+    "reset clock to None" in {
+      val controller = Controller()
+      controller.newGameWithClock(Some(TimeControl.Blitz5_0))
+      controller.loadFenResult("8/8/8/8/8/8/8/4K3 w - - 0 1")
+      controller.clock shouldBe None
+    }
+  }
+
+  "newGame" should {
+    "reset clock to None" in {
+      val controller = Controller()
+      controller.newGameWithClock(Some(TimeControl.Blitz5_0))
+      controller.newGame()
+      controller.clock shouldBe None
+    }
+
+    "reset game states" in {
+      val controller = Controller()
+      controller.doMove(Move(Position(1, 4), Position(3, 4)))
+      controller.newGame()
+      controller.gameStatesCount shouldBe 1
+      controller.browseIndex shouldBe 0
     }
   }
 }

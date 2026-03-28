@@ -118,6 +118,21 @@ class FenSpec extends AnyWordSpec with Matchers:
           }
       }
     }
+
+    "parse 4-field FEN (no halfmove clock or fullmove number)" in {
+      val fen = "8/8/8/8/8/8/8/4K3 w - -"
+      val game = Fen.parse(fen)
+      game shouldBe defined
+      game.get.halfMoveClock shouldBe 0
+      game.get.fullMoveNumber shouldBe 1
+    }
+
+    "parse draw by 50-move rule from FEN" in {
+      val fen = "4k3/8/8/8/8/8/8/4K2R w - - 100 51"
+      val game = Fen.parse(fen)
+      game shouldBe defined
+      game.get.status shouldBe GameStatus.Draw
+    }
   }
 
   "Fen.toFen" should {

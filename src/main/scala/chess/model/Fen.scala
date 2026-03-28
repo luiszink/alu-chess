@@ -25,7 +25,10 @@ object Fen:
       yield
         val castling = parts(2)
         val movedPieces = castlingToMovedPieces(castling)
-        val enPassantStr = if parts.length > 3 then parts(3) else "-"
+        val enPassantStr = if parts.length > 3 then parts(3)
+          // $COVERAGE-OFF$ normalizeFenParts guarantees length >= 4
+          else "-"
+          // $COVERAGE-ON$
         val lastMove = parseEnPassant(enPassantStr)
         val halfMoveClock = if parts.length > 4 then parts(4).toIntOption.getOrElse(0) else 0
         val fullMoveNumber = if parts.length > 5 then parts(5).toIntOption.getOrElse(1) else 1
