@@ -1,13 +1,14 @@
 package chess.aview.gui
 
 import chess.controller.ControllerInterface
+import chess.model.TimeControl
 import chess.util.Observer
 
 import scala.swing.*
-import java.awt.{Color as AwtColor, Dimension}
+import java.awt.{Color as AwtColor, CardLayout, Dimension}
 import javax.swing.{UIManager, WindowConstants, Timer as SwingTimer}
 
-/** Main GUI window – lichess-inspired modern dark theme.
+/** Main GUI window – lichess-inspired modern dark theme with start screen and nav bar.
   * Registers as Observer on the Controller, same pattern as TUI. */
 class SwingGUI(controller: ControllerInterface) extends Frame with Observer:
   controller.add(this)
@@ -18,14 +19,16 @@ class SwingGUI(controller: ControllerInterface) extends Frame with Observer:
   catch case _: Exception => () // fallback to default
 
   title = "alu-chess"
-  resizable = false
+  resizable = true
 
-  private val boardPanel = BoardPanel(controller)
+  private val darkBg = new AwtColor(38, 36, 33)
+
+  private val boardPanel   = BoardPanel(controller)
   private val historyPanel = HistoryPanel(controller)
-  private val clockPanel = ClockPanel(controller)
+  private val clockPanel   = ClockPanel(controller)
   private val sidePanel = SidePanel(
     controller,
-    onNewGame = () => controller.newGame(),
+    onNewGame = () => showGameView(None),
     onQuit = () => { clockTimer.stop(); dispose(); controller.quit() }
   )
 
@@ -36,53 +39,108 @@ class SwingGUI(controller: ControllerInterface) extends Frame with Observer:
   })
   clockTimer.start()
 
-  // Player name labels (small, between clocks and history – like lichess)
+  // --- CardLayout view switcher ---
+  private val CardHome = "home"
+  private val CardGame = "game"
+
+  private val cardLayout = new CardLayout()
+  private val cardPanel  = new Panel:
+    background = darkBg
+    peer.setLayout(cardLayout)
+
+  // --- Start panel (centered in available space) ---
+  private val startPanel = new StartPanel(
+    controller,
+    onStart = tc => showGameView(tc)
+  )
+
+  private val startWrapper = new BorderPanel:
+    background = darkBg
+    layout(startPanel) = BorderPanel.Position.Center
+
+  // --- Game panel (same layout as before) ---
   private val blackNameLabel = new Label("  Schwarz"):
     font = new java.awt.Font("SansSerif", java.awt.Font.PLAIN, 12)
     foreground = new AwtColor(160, 160, 160)
     opaque = true
-    background = new AwtColor(38, 36, 33)
+    background = darkBg
   private val whiteNameLabel = new Label("  Weiß"):
     font = new java.awt.Font("SansSerif", java.awt.Font.PLAIN, 12)
     foreground = new AwtColor(160, 160, 160)
     opaque = true
-    background = new AwtColor(38, 36, 33)
+    background = darkBg
 
-  // Top section: black clock + player name
   private val topSection = new BoxPanel(Orientation.Vertical):
-    background = new AwtColor(38, 36, 33)
+    background = darkBg
     contents += clockPanel.blackClock
     contents += blackNameLabel
 
-  // Bottom section: player name + white clock + compact controls
   private val bottomSection = new BoxPanel(Orientation.Vertical):
-    background = new AwtColor(38, 36, 33)
+    background = darkBg
     contents += whiteNameLabel
     contents += clockPanel.whiteClock
     contents += sidePanel
 
-  // Right panel: BorderPanel so history fills all available vertical space
   private val rightPanel = new BorderPanel:
-    background = new AwtColor(38, 36, 33)
+    background = darkBg
     preferredSize = new Dimension(300, boardPanel.preferredSize.height)
-    layout(topSection) = BorderPanel.Position.North
+    layout(topSection)   = BorderPanel.Position.North
     layout(historyPanel) = BorderPanel.Position.Center
     layout(bottomSection) = BorderPanel.Position.South
 
-  contents = new BorderPanel:
-    background = new AwtColor(38, 36, 33)
+  private val gamePanel = new BorderPanel:
+    background = darkBg
     layout(boardPanel) = BorderPanel.Position.Center
     layout(rightPanel) = BorderPanel.Position.East
 
+  // --- Nav bar ---
+  private val navBar = new NavBar(
+    onHome  = () => showHomeView(),
+    onGame  = () => showGameView(None),
+    onTools = () => sidePanel.openToolsDialog()
+  )
+
+  // --- Root layout: NavBar (North) + CardPanel (Center) ---
+  private val startScroll = new ScrollPane(startWrapper):
+    horizontalScrollBarPolicy = ScrollPane.BarPolicy.Never
+    verticalScrollBarPolicy   = ScrollPane.BarPolicy.AsNeeded
+    border = javax.swing.BorderFactory.createEmptyBorder()
+    peer.getViewport.setBackground(darkBg)
+    peer.setBackground(darkBg)
+
+  cardPanel.peer.add(startScroll.peer, CardHome)
+  cardPanel.peer.add(gamePanel.peer,   CardGame)
+
+  contents = new BorderPanel:
+    background = darkBg
+    layout(Component.wrap(navBar.peer)) = BorderPanel.Position.North
+    layout(cardPanel)                   = BorderPanel.Position.Center
+
+  // Set explicit window size – board is 640px, right panel 300px
   peer.setDefaultCloseOperation(WindowConstants.EXIT_ON_CLOSE)
-  pack()
+  peer.setSize(new Dimension(960, 720))
+  peer.setMinimumSize(new Dimension(800, 600))
   centerOnScreen()
   visible = true
 
-  // Initial display
-  clockPanel.refresh()
-  historyPanel.refresh()
-  sidePanel.refresh()
+  // Start on home view
+  showHomeView()
+
+  // --- View switching helpers ---
+  private def showHomeView(): Unit =
+    cardLayout.show(cardPanel.peer, CardHome)
+    navBar.setActive("home")
+    repaint()
+
+  private def showGameView(tc: Option[TimeControl]): Unit =
+    controller.newGameWithClock(tc)
+    cardLayout.show(cardPanel.peer, CardGame)
+    navBar.setActive("game")
+    clockPanel.refresh()
+    historyPanel.refresh()
+    sidePanel.refresh()
+    boardPanel.refresh()
+    repaint()
 
   override def update(): Unit =
     boardPanel.refresh()
