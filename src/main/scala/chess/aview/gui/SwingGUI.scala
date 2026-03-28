@@ -19,7 +19,7 @@ class SwingGUI(controller: ControllerInterface) extends Frame with Observer:
   catch case _: Exception => () // fallback to default
 
   title = "alu-chess"
-  resizable = false
+  resizable = true
 
   private val darkBg = new AwtColor(38, 36, 33)
 
@@ -48,11 +48,15 @@ class SwingGUI(controller: ControllerInterface) extends Frame with Observer:
     background = darkBg
     peer.setLayout(cardLayout)
 
-  // --- Start panel ---
+  // --- Start panel (centered in available space) ---
   private val startPanel = new StartPanel(
     controller,
     onStart = tc => showGameView(tc)
   )
+
+  private val startWrapper = new BorderPanel:
+    background = darkBg
+    layout(startPanel) = BorderPanel.Position.Center
 
   // --- Game panel (same layout as before) ---
   private val blackNameLabel = new Label("  Schwarz"):
@@ -97,7 +101,7 @@ class SwingGUI(controller: ControllerInterface) extends Frame with Observer:
   )
 
   // --- Root layout: NavBar (North) + CardPanel (Center) ---
-  private val startScroll = new ScrollPane(startPanel):
+  private val startScroll = new ScrollPane(startWrapper):
     horizontalScrollBarPolicy = ScrollPane.BarPolicy.Never
     verticalScrollBarPolicy   = ScrollPane.BarPolicy.AsNeeded
     border = javax.swing.BorderFactory.createEmptyBorder()
@@ -112,8 +116,10 @@ class SwingGUI(controller: ControllerInterface) extends Frame with Observer:
     layout(Component.wrap(navBar.peer)) = BorderPanel.Position.North
     layout(cardPanel)                   = BorderPanel.Position.Center
 
+  // Set explicit window size – board is 640px, right panel 300px
   peer.setDefaultCloseOperation(WindowConstants.EXIT_ON_CLOSE)
-  pack()
+  peer.setSize(new Dimension(960, 720))
+  peer.setMinimumSize(new Dimension(800, 600))
   centerOnScreen()
   visible = true
 

@@ -4,159 +4,116 @@ import chess.controller.ControllerInterface
 import chess.model.TimeControl
 
 import scala.swing.*
-import java.awt.{Color as AwtColor, Font, Dimension, Cursor, GridLayout}
+import java.awt.{Color as AwtColor, Font, Dimension, Cursor, GridLayout, Graphics, Graphics2D, RenderingHints}
 import java.awt.event.{MouseAdapter, MouseEvent}
 import javax.swing.BorderFactory
 import javax.swing.border.EmptyBorder
 
-/** Lichess-inspired start/home screen.
-  * Displays time-control cards the player can click to launch a game,
-  * plus an "Ohne Uhr spielen" option for an untimed game.
-  * `onStart(tc)` is called when the user selects a time control.
-  */
+/** Lichess-inspired start/home screen with centered grid of time controls. */
 class StartPanel(controller: ControllerInterface, onStart: Option[TimeControl] => Unit)
     extends BoxPanel(Orientation.Vertical):
 
   private val bg        = new AwtColor(38, 36, 33)
-  private val cardBg    = new AwtColor(48, 46, 43)
-  private val cardHover = new AwtColor(62, 60, 57)
-  private val cardBorder= new AwtColor(65, 63, 60)
+  private val cardBg    = new AwtColor(52, 50, 47)
+  private val cardHover = new AwtColor(68, 66, 63)
+  private val cardBorder= new AwtColor(60, 58, 55)
   private val titleFg   = new AwtColor(240, 240, 240)
-  private val subtitleFg= new AwtColor(160, 160, 160)
-  private val playBtnBg = new AwtColor(186, 202, 68)  // lichess yellow-green
-  private val playBtnFg = new AwtColor(20, 20, 20)
+  private val subtitleFg= new AwtColor(140, 140, 140)
+  private val accentGreen = new AwtColor(186, 202, 68)
 
   background = bg
-  border = new EmptyBorder(40, 40, 40, 40)
+  border = new EmptyBorder(20, 0, 20, 0)
 
-  // --- Hero section ---
-  private val heroIcon = new Label("♟"):
-    font = new Font("Segoe UI Symbol", Font.PLAIN, 72)
-    foreground = new AwtColor(186, 202, 68)
-    horizontalAlignment = Alignment.Center
-  heroIcon.xLayoutAlignment = 0.5
-
+  // --- Hero ---
   private val heroTitle = new Label("alu-chess"):
-    font = new Font("SansSerif", Font.BOLD, 40)
+    font = new Font("SansSerif", Font.BOLD, 36)
     foreground = titleFg
     horizontalAlignment = Alignment.Center
   heroTitle.xLayoutAlignment = 0.5
 
-  private val heroSubtitle = new Label("Wähle ein Zeitformat und starte eine Partie"):
-    font = new Font("SansSerif", Font.PLAIN, 15)
+  private val heroSubtitle = new Label("Wähle ein Zeitformat"):
+    font = new Font("SansSerif", Font.PLAIN, 14)
     foreground = subtitleFg
     horizontalAlignment = Alignment.Center
   heroSubtitle.xLayoutAlignment = 0.5
 
-  // --- Time-control categories ---
-  private case class Category(name: String, icon: String, color: AwtColor, presets: Vector[TimeControl])
+  // --- Time control data ---
+  private case class TcEntry(label: String, category: String, catColor: AwtColor, tc: Option[TimeControl])
 
-  private val categories = Vector(
-    Category("Bullet",     "⚡",  new AwtColor(210, 100, 60),  Vector(TimeControl.Bullet1_0, TimeControl.Bullet2_1)),
-    Category("Blitz",      "🔥",  new AwtColor(186, 202, 68),  Vector(TimeControl.Blitz3_0, TimeControl.Blitz3_2, TimeControl.Blitz5_0, TimeControl.Blitz5_3)),
-    Category("Rapid",      "⏱",  new AwtColor(100, 170, 220), Vector(TimeControl.Rapid10_0, TimeControl.Rapid10_5, TimeControl.Rapid15_10)),
-    Category("Classical",  "🎓",  new AwtColor(160, 140, 200), Vector(TimeControl.Classical30_0)),
+  private val entries = Vector(
+    TcEntry("1+0",   "Bullet",       new AwtColor(210, 100, 60),  Some(TimeControl.Bullet1_0)),
+    TcEntry("2+1",   "Bullet",       new AwtColor(210, 100, 60),  Some(TimeControl.Bullet2_1)),
+    TcEntry("3+0",   "Blitz",        accentGreen,                 Some(TimeControl.Blitz3_0)),
+    TcEntry("3+2",   "Blitz",        accentGreen,                 Some(TimeControl.Blitz3_2)),
+    TcEntry("5+0",   "Blitz",        accentGreen,                 Some(TimeControl.Blitz5_0)),
+    TcEntry("5+3",   "Blitz",        accentGreen,                 Some(TimeControl.Blitz5_3)),
+    TcEntry("10+0",  "Schnell",      new AwtColor(100, 170, 220), Some(TimeControl.Rapid10_0)),
+    TcEntry("10+5",  "Schnell",      new AwtColor(100, 170, 220), Some(TimeControl.Rapid10_5)),
+    TcEntry("15+10", "Schnell",      new AwtColor(100, 170, 220), Some(TimeControl.Rapid15_10)),
+    TcEntry("30+0",  "Klassisch",    new AwtColor(160, 140, 200), Some(TimeControl.Classical30_0)),
+    TcEntry("30+20", "Klassisch",    new AwtColor(160, 140, 200), None), // placeholder – no preset yet
+    TcEntry("Ohne Uhr", "Freies Spiel", subtitleFg,               None),
   )
 
-  // --- Helper: time-control card ---
-  private def tcCard(tc: TimeControl, accentColor: AwtColor): Panel =
-    val initialMin = tc.initialTimeMs / 60_000L
-    val initialSec = (tc.initialTimeMs / 1_000L) % 60L
-    val incSec     = tc.incrementMs / 1_000L
-    // Main label e.g. "1+0" or "15+10"
-    val labelText = if initialMin > 0 then s"$initialMin+$incSec" else s"${initialSec}s+$incSec"
-    // Sub-label: time unit
-    val descText  = if initialMin > 0 then "min" else "sec"
+  // --- Card factory ---
+  private def tcCard(entry: TcEntry): Panel =
+    val isNoClockCard = entry.tc.isEmpty && entry.label == "Ohne Uhr"
     val card = new Panel:
       background = cardBg
       opaque = true
-      preferredSize = new Dimension(100, 56)
-      maximumSize  = new Dimension(100, 56)
-      minimumSize  = new Dimension(80, 48)
       cursor = new Cursor(Cursor.HAND_CURSOR)
       border = BorderFactory.createCompoundBorder(
         BorderFactory.createLineBorder(cardBorder, 1, true),
-        BorderFactory.createEmptyBorder(6, 8, 6, 8)
+        BorderFactory.createEmptyBorder(10, 10, 10, 10)
       )
-      peer.setLayout(new java.awt.BorderLayout)
-      peer.add(new Label(labelText) {
-        font = new Font("SansSerif", Font.BOLD, 14)
-        foreground = accentColor
+      peer.setLayout(new java.awt.BorderLayout(0, 2))
+
+      val timeLabel = new Label(entry.label):
+        font = new Font("SansSerif", Font.BOLD, 22)
+        foreground = titleFg
         horizontalAlignment = Alignment.Center
-      }.peer, java.awt.BorderLayout.CENTER)
-      val descRow = new Label(descText):
-        font = new Font("SansSerif", Font.PLAIN, 10)
-        foreground = subtitleFg
+      peer.add(timeLabel.peer, java.awt.BorderLayout.CENTER)
+
+      val catLabel = new Label(entry.category):
+        font = new Font("SansSerif", Font.PLAIN, 11)
+        foreground = entry.catColor
         horizontalAlignment = Alignment.Center
-      peer.add(descRow.peer, java.awt.BorderLayout.SOUTH)
+      peer.add(catLabel.peer, java.awt.BorderLayout.SOUTH)
 
     card.peer.addMouseListener(new MouseAdapter:
       override def mouseEntered(e: MouseEvent): Unit =
-        card.background = cardHover
-        card.repaint()
+        card.background = cardHover; card.repaint()
       override def mouseExited(e: MouseEvent): Unit =
-        card.background = cardBg
-        card.repaint()
+        card.background = cardBg; card.repaint()
       override def mouseClicked(e: MouseEvent): Unit =
-        onStart(Some(tc))
+        if isNoClockCard then onStart(None)
+        else entry.tc.foreach(t => onStart(Some(t)))
     )
     card
 
-  // --- Helper: category section ---
-  private def categorySection(cat: Category): BoxPanel =
-    val section = new BoxPanel(Orientation.Vertical):
-      background = bg
-      opaque = true
-
-    val headerRow = new BoxPanel(Orientation.Horizontal):
-      background = bg
-      opaque = true
-      contents += new Label(s"${cat.icon}  ${cat.name}"):
-        font = new Font("SansSerif", Font.BOLD, 14)
-        foreground = cat.color
-        horizontalAlignment = Alignment.Left
-      contents += Swing.HGlue
-
-    headerRow.xLayoutAlignment = 0.0
-
-    val cardsRow = new Panel:
-      background = bg
-      opaque = true
-      peer.setLayout(new java.awt.FlowLayout(java.awt.FlowLayout.LEFT, 8, 4))
-      peer.setBackground(bg)
-      for tc <- cat.presets do
-        peer.add(tcCard(tc, cat.color).peer)
-
-    section.contents += headerRow
-    section.contents += Swing.VStrut(4)
-    section.contents += Component.wrap(cardsRow.peer)
-    section
-
-  // --- "No clock" button ---
-  private val noClockButton = new Button("Ohne Uhr spielen"):
-    font = new Font("SansSerif", Font.BOLD, 14)
-    foreground = playBtnFg
-    background = playBtnBg
+  // --- Grid: 4 columns x 3 rows ---
+  private val gridPanel = new Panel:
+    background = bg
     opaque = true
-    borderPainted = false
-    focusPainted = false
-    cursor = new Cursor(Cursor.HAND_CURSOR)
-    preferredSize = new Dimension(200, 42)
-    maximumSize  = new Dimension(200, 42)
-  noClockButton.xLayoutAlignment = 0.5
-  listenTo(noClockButton)
-  reactions += { case event.ButtonClicked(`noClockButton`) => onStart(None) }
+    peer.setLayout(new GridLayout(3, 4, 6, 6))
+    for entry <- entries do
+      peer.add(tcCard(entry).peer)
+
+  gridPanel.maximumSize = new Dimension(520, 280)
+  gridPanel.preferredSize = new Dimension(520, 280)
+
+  // Center the grid horizontally
+  private val gridWrapper = new BoxPanel(Orientation.Horizontal):
+    background = bg
+    contents += Swing.HGlue
+    contents += Component.wrap(gridPanel.peer)
+    contents += Swing.HGlue
 
   // --- Assemble ---
-  contents += heroIcon
-  contents += Swing.VStrut(8)
+  contents += Swing.VGlue
   contents += heroTitle
   contents += Swing.VStrut(6)
   contents += heroSubtitle
-  contents += Swing.VStrut(32)
-  for cat <- categories do
-    contents += categorySection(cat)
-    contents += Swing.VStrut(20)
-  contents += Swing.VStrut(8)
-  contents += noClockButton
+  contents += Swing.VStrut(28)
+  contents += gridWrapper
   contents += Swing.VGlue

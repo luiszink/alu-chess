@@ -424,13 +424,12 @@ class SidePanel(controller: ControllerInterface, onNewGame: () => Unit, onQuit: 
   def openToolsDialog(): Unit =
     toolsDialog.setVisible(true)
 
-  // --- Action row: compact buttons (Neues Spiel | Beenden | Werkzeuge) ---
+  // --- Action row: compact buttons (Neues Spiel | Beenden) ---
   private val actionRow = new Panel:
     background = new AwtColor(38, 36, 33)
-    peer.setLayout(new java.awt.GridLayout(1, 3, 4, 0))
+    peer.setLayout(new java.awt.GridLayout(1, 2, 4, 0))
     peer.add(newGameButton.peer)
     peer.add(quitButton.peer)
-    peer.add(styledButton("⚙ Werkzeuge", () => toggleToolsDialog()).peer)
   actionRow.preferredSize = new Dimension(contentWidth, 32)
   actionRow.maximumSize = new Dimension(Short.MaxValue, 32)
   centerAlign(actionRow)
@@ -444,8 +443,6 @@ class SidePanel(controller: ControllerInterface, onNewGame: () => Unit, onQuit: 
   contents += moveLabel
   contents += Swing.VStrut(sectionGap)
   contents += styledSeparator()
-  contents += Swing.VStrut(smallGap)
-  contents += timeControlCombo
   contents += Swing.VStrut(smallGap)
   contents += actionRow
   contents += Swing.VStrut(4)

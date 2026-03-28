@@ -20,13 +20,13 @@ class NavBar(onHome: () => Unit, onGame: () => Unit, onTools: () => Unit) extend
   private val activeFg  = new AwtColor(255, 255, 255)
   private val activeUnderline = new AwtColor(186, 202, 68) // lichess green-yellow
 
-  private val logoFont = new Font("SansSerif", Font.BOLD, 20)
-  private val itemFont = new Font("SansSerif", Font.PLAIN, 13)
+  private val logoFont = new Font("SansSerif", Font.BOLD, 22)
+  private val itemFont = new Font("SansSerif", Font.PLAIN, 15)
 
   background = barBg
-  preferredSize = new Dimension(Short.MaxValue, 46)
-  maximumSize  = new Dimension(Short.MaxValue, 46)
-  minimumSize  = new Dimension(400, 46)
+  preferredSize = new Dimension(Short.MaxValue, 40)
+  maximumSize  = new Dimension(Short.MaxValue, 40)
+  minimumSize  = new Dimension(400, 40)
 
   peer.setLayout(new java.awt.BorderLayout(0, 0))
   peer.setBackground(barBg)
@@ -38,7 +38,7 @@ class NavBar(onHome: () => Unit, onGame: () => Unit, onTools: () => Unit) extend
     background = logoBg
     opaque = true
     cursor = new Cursor(Cursor.HAND_CURSOR)
-    border = BorderFactory.createEmptyBorder(0, 14, 0, 14)
+    border = BorderFactory.createEmptyBorder(0, 16, 0, 20)
   logoLabel.peer.addMouseListener(new MouseAdapter:
     override def mouseClicked(e: MouseEvent): Unit = onHome()
   )
@@ -54,7 +54,7 @@ class NavBar(onHome: () => Unit, onGame: () => Unit, onTools: () => Unit) extend
       background = barBg
       opaque = true
       cursor = new Cursor(Cursor.HAND_CURSOR)
-      border = BorderFactory.createEmptyBorder(0, 10, 0, 10)
+      border = BorderFactory.createEmptyBorder(0, 14, 0, 14)
     lbl.peer.addMouseListener(new MouseAdapter:
       override def mouseEntered(e: MouseEvent): Unit =
         lbl.foreground = itemHover
