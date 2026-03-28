@@ -809,7 +809,7 @@ class ControllerSpec extends AnyWordSpec with Matchers {
       controller.doMove(Move(Position(6, 4), Position(4, 4)))
       controller.doMove(Move(Position(1, 6), Position(3, 6)))
       controller.doMove(Move(Position(7, 3), Position(3, 7)))
-      val id2 = controller.gameHistory.last.id
+      val id2 = controller.gameHistory.head.id
       controller.newGame()
       // Load first replay
       controller.loadReplay(id1) shouldBe true
