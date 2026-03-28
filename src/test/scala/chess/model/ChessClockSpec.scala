@@ -13,6 +13,13 @@ class ChessClockSpec extends AnyWordSpec with Matchers {
       TimeControl.presets should contain(TimeControl.Blitz5_0)
       TimeControl.presets should contain(TimeControl.Rapid10_0)
       TimeControl.presets should contain(TimeControl.Classical30_0)
+      TimeControl.presets should contain(TimeControl.Classical30_20)
+    }
+
+    "have correct values for Classical30_20" in {
+      TimeControl.Classical30_20.initialTimeMs shouldBe 1_800_000L
+      TimeControl.Classical30_20.incrementMs shouldBe 20_000L
+      TimeControl.Classical30_20.name shouldBe "30+20 Classical"
     }
 
     "have correct values for Bullet1_0" in {
@@ -47,6 +54,14 @@ class ChessClockSpec extends AnyWordSpec with Matchers {
       clock.whiteTimeMs shouldBe 180_000L
       clock.blackTimeMs shouldBe 180_000L
       clock.incrementMs shouldBe 2_000L
+    }
+
+    "create a clock for Classical30_20 with 30 minutes and 20 second increment" in {
+      val clock = ChessClock.fromTimeControl(TimeControl.Classical30_20)
+      clock.whiteTimeMs shouldBe 1_800_000L
+      clock.blackTimeMs shouldBe 1_800_000L
+      clock.incrementMs shouldBe 20_000L
+      clock.activeColor shouldBe None
     }
   }
 
