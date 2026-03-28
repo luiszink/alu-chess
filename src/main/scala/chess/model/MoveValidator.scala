@@ -130,7 +130,9 @@ object MoveValidator:
             }
           }
         }
+      // $COVERAGE-OFF$ isCastlingValid is only ever called when move.from holds a King
       case _ => false
+      // $COVERAGE-ON$
 
   /** Apply special move side-effects to the board after basic piece movement.
     * Handles: castling rook movement, en passant capture, pawn promotion. */
@@ -270,5 +272,7 @@ object MoveValidator:
         case Some(newBoard) =>
           val fullBoard = applyMoveEffects(move, board, newBoard)
           !isInCheck(fullBoard, color)
+        // $COVERAGE-OFF$ allMoves already ensures a piece exists at from
         case None => false
+        // $COVERAGE-ON$
     }.toList

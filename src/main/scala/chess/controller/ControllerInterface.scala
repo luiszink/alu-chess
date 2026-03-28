@@ -12,6 +12,7 @@ trait ControllerInterface:
   def loadFen(fen: String): Boolean
   def loadFenResult(fen: String): Either[ChessError, Game]
   def quit(): Unit
+  def resign(): Unit
   def boardToString: String
   def statusText: String
   def add(observer: Observer): Unit

@@ -79,5 +79,33 @@ class TUISpec extends AnyWordSpec with Matchers {
       val output = captureOutput { tui.processInput("e2 e4") }
       output should include("beendet")
     }
+
+    "run inputLoop until q is entered" in {
+      val controller = Controller()
+      val tui = TUI(controller)
+      val input = new java.io.ByteArrayInputStream("q\n".getBytes)
+      val output = new java.io.ByteArrayOutputStream()
+      Console.withIn(input) {
+        Console.withOut(output) {
+          tui.inputLoop()
+        }
+      }
+      output.toString should include("Auf Wiedersehen!")
+    }
+
+    "exit inputLoop when stdin is closed (Failure path)" in {
+      val controller = Controller()
+      val tui = TUI(controller)
+      val brokenInput = new java.io.InputStream:
+        override def read(): Int = throw new java.io.IOException("stream closed")
+        override def read(b: Array[Byte], off: Int, len: Int): Int =
+          throw new java.io.IOException("stream closed")
+      Console.withIn(new java.io.BufferedReader(new java.io.InputStreamReader(brokenInput))) {
+        Console.withOut(new java.io.ByteArrayOutputStream()) {
+          tui.inputLoop() // must exit via Failure branch, not throw
+        }
+      }
+      succeed // reached here means inputLoop handled the failure gracefully
+    }
   }
 }

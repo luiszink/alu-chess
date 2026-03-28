@@ -29,7 +29,9 @@ object Pgn:
       pair match
         case Vector(w, b) => s"$moveNum. ${w.san} ${b.san}"
         case Vector(w)    => s"$moveNum. ${w.san}"
+        // $COVERAGE-OFF$ grouped(2) never yields empty Vector
         case _            => ""
+        // $COVERAGE-ON$
     }.mkString(" ")
 
     sb.append(moveTexts)
@@ -96,7 +98,9 @@ object Pgn:
         case 1 if disambig(0).isLetter => candidates.filter(_.from.col == disambig(0) - 'a')
         case 1 if disambig(0).isDigit  => candidates.filter(_.from.row == disambig(0).asDigit - 1)
         case 2 => Position.fromString(disambig).map(p => candidates.filter(_.from == p)).getOrElse(Nil)
+        // $COVERAGE-OFF$ disambig > 2 chars is not possible with standard SAN
         case _ => Nil
+        // $COVERAGE-ON$
 
       filtered.headOption.map(m => m.copy(promotion = promotion.orElse(m.promotion)))
     }
@@ -110,8 +114,10 @@ object Pgn:
     val destStr = str.takeRight(2)
     val fileHint =
       if str.length > 2 then Some(str(0) - 'a')
+      // $COVERAGE-OFF$ unreachable with standard SAN (file + 'x' always makes str.length > 2)
       else if originalStr.contains("x") && originalStr.nonEmpty && originalStr(0).isLetter then
         Some(originalStr(0) - 'a')
+      // $COVERAGE-ON$
       else None
 
     Position.fromString(destStr).flatMap { to =>
@@ -142,7 +148,9 @@ object Pgn:
             case Some(move) =>
               game.applyMoveE(move) match
                 case Right(updated) => Right(updated)
+                // $COVERAGE-OFF$ parseSAN already filters via legalMoves; applyMoveE cannot fail
                 case Left(err)      => Left(s"Zug ${idx + 1} ('$token'): ${err.message}")
+                // $COVERAGE-ON$
             case None => Left(s"Zug ${idx + 1}: '$token' nicht erkannt")
     }
 

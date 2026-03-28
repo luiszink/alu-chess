@@ -118,6 +118,21 @@ class FenSpec extends AnyWordSpec with Matchers:
           }
       }
     }
+
+    "parse 4-field FEN (no halfmove clock or fullmove number)" in {
+      val fen = "8/8/8/8/8/8/8/4K3 w - -"
+      val game = Fen.parse(fen)
+      game shouldBe defined
+      game.get.halfMoveClock shouldBe 0
+      game.get.fullMoveNumber shouldBe 1
+    }
+
+    "parse draw by 50-move rule from FEN" in {
+      val fen = "4k3/8/8/8/8/8/8/4K2R w - - 100 51"
+      val game = Fen.parse(fen)
+      game shouldBe defined
+      game.get.status shouldBe GameStatus.Draw
+    }
   }
 
   "Fen.toFen" should {
@@ -145,6 +160,39 @@ class FenSpec extends AnyWordSpec with Matchers:
       game shouldBe defined
       val result = Fen.toFen(game.get)
       result should include("Kq")
+    }
+
+    "produce '-' castling when no castling rights available" in {
+      // Parse FEN with no castling rights; toFen should round-trip to '-'
+      val fen = "r3k2r/pppppppp/8/8/8/8/PPPPPPPP/R3K2R w - - 0 1"
+      val game = Fen.parse(fen)
+      game shouldBe defined
+      val result = Fen.toFen(game.get)
+      result.split(" ")(2) shouldBe "-"
+    }
+
+    "encode en passant square after double pawn push" in {
+      val game = Game.newGame.applyMove(Move(Position(1, 4), Position(3, 4))).get // e2-e4
+      val fen = Fen.toFen(game)
+      fen should include("e3") // en passant target square
+    }
+
+    "produce '-' en passant when last move is not a double pawn push" in {
+      val game = Game.newGame.applyMove(Move(Position(1, 4), Position(2, 4))).get // e2-e3
+      val fen = Fen.toFen(game)
+      fen.split(" ")(3) shouldBe "-"
+    }
+
+    "produce '-' en passant when last move is a non-pawn moving two rows" in {
+      // Construct a game state directly where lastMove is a rook moving 2 rows
+      val board = Board.empty
+        .put(Position(0, 4), Piece.King(Color.White))
+        .put(Position(7, 4), Piece.King(Color.Black))
+        .put(Position(2, 0), Piece.Rook(Color.White))
+      val lastMove = Some(Move(Position(0, 0), Position(2, 0))) // rook moved 2 rows
+      val game = Game(board, Color.Black, GameStatus.Playing, lastMove = lastMove)
+      val fen = Fen.toFen(game)
+      fen.split(" ")(3) shouldBe "-"
     }
   }
 
@@ -208,6 +256,27 @@ class FenSpec extends AnyWordSpec with Matchers:
       )
       for fen <- fens do
         Fen.parse(fen) shouldBe Fen.parseE(fen).toOption
+    }
+
+    "return Left(InvalidFenBoardRow) for rank containing digit '0'" in {
+      // '0' as digit represents 0 squares which is invalid (must be 1-8)
+      Fen.parseE("0nrrbbkk/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1") shouldBe a[Left[?, ?]]
+    }
+
+    "return Left(InvalidFenBoardRow) for rank containing digit '9'" in {
+      // '9' would represent 9 empty squares which is invalid for an 8-file board
+      Fen.parseE("9/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1") shouldBe a[Left[?, ?]]
+    }
+  }
+
+  "Fen.parseE en passant with invalid target row" should {
+
+    "treat an ep target on an unexpected row as no en passant" in {
+      // 'e4' is row 3 (0-indexed) which is neither rank 3 (row 2) nor rank 6 (row 5)
+      val fen = "rnbqkbnr/pppppppp/8/8/4P3/8/PPPP1PPP/RNBQKBNR b KQkq e4 0 1"
+      val game = Fen.parseE(fen)
+      game shouldBe a[Right[?, ?]]
+      game.map(_.lastMove) shouldBe Right(None)
     }
   }
 
