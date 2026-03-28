@@ -3,10 +3,11 @@ package chess.model
 import org.scalatest.wordspec.AnyWordSpec
 import org.scalatest.matchers.should.Matchers
 import org.scalatest.BeforeAndAfterEach
+import scala.compiletime.uninitialized
 
 class GameRepositorySpec extends AnyWordSpec with Matchers with BeforeAndAfterEach {
 
-  var repo: InMemoryGameRepository = _
+  var repo: InMemoryGameRepository = uninitialized
 
   override def beforeEach(): Unit =
     repo = InMemoryGameRepository()

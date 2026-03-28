@@ -286,6 +286,51 @@ class ControllerSpec extends AnyWordSpec with Matchers {
     "load a replay and allow browsing" in {
       val repo = chess.model.InMemoryGameRepository()
       val controller = Controller(repo)
+      // Fool's Mate
+      controller.doMove(Move(Position(1, 5), Position(2, 5)))
+      controller.doMove(Move(Position(6, 4), Position(4, 4)))
+      controller.doMove(Move(Position(1, 6), Position(3, 6)))
+      controller.doMove(Move(Position(7, 3), Position(3, 7)))
+      val recordId = controller.gameHistory.head.id
+      controller.newGame()
+      controller.loadReplay(recordId) shouldBe true
+      // Should be at the end of the replayed game
+      controller.gameStatesCount shouldBe 5 // initial + 4 moves
+      controller.browseIndex shouldBe 4
+      // Browse back
+      controller.browseBack()
+      controller.browseIndex shouldBe 3
+    }
+
+    "exit replay and restore previous game state" in {
+      val repo = chess.model.InMemoryGameRepository()
+      val controller = Controller(repo)
+      // Play to checkmate (Fool's Mate)
+      controller.doMove(Move(Position(1, 5), Position(2, 5)))
+      controller.doMove(Move(Position(6, 4), Position(4, 4)))
+      controller.doMove(Move(Position(1, 6), Position(3, 6)))
+      controller.doMove(Move(Position(7, 3), Position(3, 7)))
+      val recordId = controller.gameHistory.head.id
+      // Start a new game and make one move
+      controller.newGame()
+      controller.doMove(Move(Position(1, 4), Position(3, 4))) // e2-e4
+      val statesBeforeReplay = controller.gameStatesCount
+      // Enter replay
+      controller.loadReplay(recordId) shouldBe true
+      controller.isInReplay shouldBe true
+      // Exit replay
+      controller.exitReplay()
+      controller.isInReplay shouldBe false
+      controller.gameStatesCount shouldBe statesBeforeReplay
+    }
+
+    "return false for unknown replay id" in {
+      val controller = Controller()
+      controller.loadReplay("nonexistent") shouldBe false
+      controller.isInReplay shouldBe false
+    }
+  }
+
   // --- History navigation ---
 
   "browseBack" should {
@@ -557,21 +602,6 @@ class ControllerSpec extends AnyWordSpec with Matchers {
       controller.doMove(Move(Position(6, 4), Position(4, 4)))
       controller.doMove(Move(Position(1, 6), Position(3, 6)))
       controller.doMove(Move(Position(7, 3), Position(3, 7)))
-      val recordId = controller.gameHistory.head.id
-      controller.newGame()
-      controller.loadReplay(recordId) shouldBe true
-      // Should be at the end of the replayed game
-      controller.gameStatesCount shouldBe 5 // initial + 4 moves
-      controller.browseIndex shouldBe 4
-      // Browse back
-      controller.browseBack()
-      controller.browseIndex shouldBe 3
-    }
-
-    "exit replay and restore previous game state" in {
-      val repo = chess.model.InMemoryGameRepository()
-      val controller = Controller(repo)
-      // Play to checkmate (Fool's Mate)
       controller.game.status shouldBe GameStatus.Checkmate
       controller.tickClock() // should not throw
     }
@@ -631,24 +661,6 @@ class ControllerSpec extends AnyWordSpec with Matchers {
       controller.doMove(Move(Position(6, 4), Position(4, 4)))
       controller.doMove(Move(Position(1, 6), Position(3, 6)))
       controller.doMove(Move(Position(7, 3), Position(3, 7)))
-      val recordId = controller.gameHistory.head.id
-      // Start a new game and make one move
-      controller.newGame()
-      controller.doMove(Move(Position(1, 4), Position(3, 4))) // e2-e4
-      val statesBeforeReplay = controller.gameStatesCount
-      // Enter replay
-      controller.loadReplay(recordId) shouldBe true
-      controller.isInReplay shouldBe true
-      // Exit replay
-      controller.exitReplay()
-      controller.isInReplay shouldBe false
-      controller.gameStatesCount shouldBe statesBeforeReplay
-    }
-
-    "return false for unknown replay id" in {
-      val controller = Controller()
-      controller.loadReplay("nonexistent") shouldBe false
-      controller.isInReplay shouldBe false
       controller.game.status shouldBe GameStatus.Checkmate
       val clock = controller.clock
       clock shouldBe defined
