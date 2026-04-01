@@ -54,18 +54,20 @@ class RandomAISpec extends AnyWordSpec with Matchers {
     }
 
     "always return a legal move across multiple plies" in {
-      var game = Game.newGame
       val aiWhite = new RandomAI(seed = Some(1L))
       val aiBlack = new RandomAI(seed = Some(2L))
-      var plies = 0
-      while !game.status.isTerminal && plies < 50 do
-        val ai = if game.currentPlayer == Color.White then aiWhite else aiBlack
-        val move = ai.selectMove(game)
-        move shouldBe defined
-        val legalMoves = MoveValidator.legalMoves(game.board, game.currentPlayer, game.movedPieces, game.lastMove)
-        legalMoves should contain(move.get)
-        game = game.applyMove(move.get).getOrElse(game)
-        plies += 1
+
+      def playPly(game: Game, pliesLeft: Int): Unit =
+        if pliesLeft == 0 || game.status.isTerminal then ()
+        else
+          val current = if game.currentPlayer == Color.White then aiWhite else aiBlack
+          val move = current.selectMove(game)
+          move shouldBe defined
+          val legalMoves = MoveValidator.legalMoves(game.board, game.currentPlayer, game.movedPieces, game.lastMove)
+          legalMoves should contain(move.get)
+          playPly(game.applyMove(move.get).getOrElse(game), pliesLeft - 1)
+
+      playPly(Game.newGame, 50)
     }
   }
 }
