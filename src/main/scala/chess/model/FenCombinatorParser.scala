@@ -24,14 +24,14 @@ private object FenCombinatorGrammar extends RegexParsers:
   // --- public entry point ---
 
   def doParse(fen: String): Either[ChessError, Game] =
-    val trimmed = fen.trim
-    val input = if !trimmed.contains(' ') then
-      s"$trimmed $DefaultColor $DefaultCastling $DefaultEnPassant"
-    else trimmed
-    parseAll(fenP, input) match
-      case Success(result, _) => result
-      case Failure(msg, _)    => Left(ChessError.InvalidFenFormat(msg))
-      case Error(msg, _)      => Left(ChessError.InvalidFenFormat(msg))
+    val rawParts = fen.trim.split("\\s+")
+    normalizeFenParts(rawParts).flatMap { parts =>
+      val input = parts.mkString(" ")
+      parseAll(fenP, input) match
+        case Success(result, _) => result
+        case Failure(msg, _)    => Left(ChessError.InvalidFenFormat(msg))
+        case Error(msg, _)      => Left(ChessError.InvalidFenFormat(msg))
+    }
 
   // --- grammar rules ---
 
@@ -60,8 +60,8 @@ private object FenCombinatorGrammar extends RegexParsers:
 
   /** Optional half-move and full-move clocks. */
   private def clocksP: Parser[(Int, Int)] =
-    " " ~> "\\d+".r ~ (" " ~> "\\d+".r) ^^ { case hm ~ fm =>
-      (hm.toIntOption.getOrElse(0), fm.toIntOption.getOrElse(1))
+    " " ~> "\\d+".r ~ opt(" " ~> "\\d+".r) ^^ { case hm ~ fmOpt =>
+      (hm.toIntOption.getOrElse(0), fmOpt.flatMap(_.toIntOption).getOrElse(1))
     }
 
   /** Full FEN grammar. */
