@@ -14,6 +14,8 @@ enum ChessError:
   case InvalidFenPieceChar(char: Char)
   case InvalidFenColor(token: String)
   case GameAlreadyOver(status: GameStatus)
+  case InvalidPgnFormat(detail: String)
+  case InvalidPgnMove(moveNumber: Int, san: String)
 
   def message: String = this match
     case InvalidMoveFormat(i)          => s"Cannot parse move: '$i'"
@@ -29,3 +31,5 @@ enum ChessError:
     case InvalidFenPieceChar(c)        => s"Unknown FEN piece: '$c'"
     case InvalidFenColor(t)            => s"Invalid active color token: '$t'"
     case GameAlreadyOver(s)            => s"Game is over: $s"
+    case InvalidPgnFormat(d)           => s"Invalid PGN: $d"
+    case InvalidPgnMove(n, san)        => s"Zug $n: '$san' nicht erkannt"
