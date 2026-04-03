@@ -43,7 +43,7 @@ object CombinatorFenParser extends RegexParsers with FenParser:
     "[KQkq]+".r | "-"
 
   private def epP: Parser[Option[Move]] =
-    ("[a-h][36]".r ^^ (s => FenSharedLogic.parseEnPassant(s))) |
+    ("[a-h][1-8]".r ^^ (s => FenSharedLogic.parseEnPassant(s))) |
     ("-" ^^^ None)
 
   private def intP: Parser[Int] =
@@ -64,10 +64,17 @@ object CombinatorFenParser extends RegexParsers with FenParser:
     FenSharedLogic.normalizeFenParts(rawParts) match
       case Left(err) => Left(err)
       case Right(normed) =>
-        val half = normed.lift(4).getOrElse("0")
-        val full = normed.lift(5).getOrElse("1")
-        val normalized = s"${normed(0)} ${normed(1)} ${normed(2)} ${normed(3)} $half $full"
-        parseAll(fenP, normalized) match
-          case Success(game, _) => Right(game)
-          case Failure(msg, _)  => Left(ChessError.InvalidFenFormat(msg))
-          case Error(msg, _)    => Left(ChessError.InvalidFenFormat(msg))
+        // Pre-validate board and color using shared logic for consistent error types
+        for
+          _ <- FenSharedLogic.parseBoardE(normed(0))
+          _ <- FenSharedLogic.parseColorE(normed(1))
+          game <- {
+            val half = normed.lift(4).getOrElse("0")
+            val full = normed.lift(5).getOrElse("1")
+            val normalized = s"${normed(0)} ${normed(1)} ${normed(2)} ${normed(3)} $half $full"
+            parseAll(fenP, normalized) match
+              case Success(g, _) => Right(g)
+              case Failure(msg, _)  => Left(ChessError.InvalidFenFormat(msg))
+              case Error(msg, _)    => Left(ChessError.InvalidFenFormat(msg))
+          }
+        yield game
