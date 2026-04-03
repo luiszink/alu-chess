@@ -1,36 +1,40 @@
 package chess.model
 
-/** Forsyth-Edwards Notation (FEN) facade.
+/** Forsyth-Edwards Notation (FEN) parser and serialiser.
   *
-  * Activate exactly one parser by uncommenting the desired line: */
+  * Parsing is delegated to the currently active [[FenParserType]]; switch at any time:
+  * {{{
+  *   Fen.activeParser = FenParserType.Regex
+  *   Fen.activeParser = FenParserType.Combinator
+  *   Fen.activeParser = FenParserType.Fast   // default
+  * }}}
+  */
 object Fen:
 
-  private val parser: FenParser = FastFenParser()
-  // private val parser: FenParser = RegExFenParser()
-  // private val parser: FenParser = FenCombinatorParser()
+  /** Currently active parser. Change to switch between implementations.
+    *
+    * Note: this is intentional shared mutable state for interactive, single-threaded
+    * use (CLI / TUI / GUI). Do not modify concurrently from multiple threads. */
+  var activeParser: FenParserType = FenParserType.Combinator
 
   /** Parse a FEN string into a Game. Returns Left with error detail on failure. */
-  def parseE(fen: String): Either[ChessError, Game] = parser.parseE(fen)
+  def parseE(fen: String): Either[ChessError, Game] = activeParser.instance.parseE(fen)
 
   /** Parse a FEN string into a Game. Returns Failure with exception on invalid input. */
-  def parseT(fen: String): scala.util.Try[Game] = parser.parseT(fen)
+  def parseT(fen: String): scala.util.Try[Game] = activeParser.instance.parseT(fen)
 
   /** Parse a FEN string into a Game. Returns None on invalid input. */
-  def parse(fen: String): Option[Game] = parser.parse(fen)
+  def parse(fen: String): Option[Game] = activeParser.instance.parse(fen)
 
   /** Convert a Game to a FEN string. */
   def toFen(game: Game): String =
-    val boardStr  = boardToFen(game.board)
-    val colorStr  = if game.currentPlayer == Color.White then "w" else "b"
+    val boardStr    = boardToFen(game.board)
+    val colorStr    = if game.currentPlayer == Color.White then "w" else "b"
     val castlingStr = movedPiecesToCastling(game.board, game.movedPieces)
-    val epStr     = lastMoveToEnPassant(game.lastMove, game.board)
-    val halfMove  = game.halfMoveClock
-    val fullMove  = game.fullMoveNumber
-    s"$boardStr $colorStr $castlingStr $epStr $halfMove $fullMove"
+    val epStr       = lastMoveToEnPassant(game.lastMove, game.board)
+    s"$boardStr $colorStr $castlingStr $epStr ${game.halfMoveClock} ${game.fullMoveNumber}"
 
-  // ---------------------------------------------------------------------------
-  // toFen helpers
-  // ---------------------------------------------------------------------------
+  // ── Serialisation helpers (only used by toFen) ────────────────────────────
 
   private def pieceToChar(p: Piece): Char = p match
     case Piece.King(Color.White)   => 'K'
