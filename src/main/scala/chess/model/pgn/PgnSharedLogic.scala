@@ -4,7 +4,7 @@ import chess.model.{Board, ChessError, Color, Game, GameStatus, Move, MoveValida
 
 /** Shared parsing utilities reused by all PGN parser implementations.
   * Accessible only within the chess.model.pgn package. */
-private[pgn] object PgnSharedLogic:
+private[model] object PgnSharedLogic:
 
   val Results: Set[String] = Set("1-0", "0-1", "1/2-1/2", "*")
 
