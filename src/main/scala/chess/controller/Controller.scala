@@ -1,6 +1,6 @@
 package chess.controller
 
-import chess.model.{Game, Move, GameStatus, Fen, ChessError, ChessClock, TimeControl, MoveEntry, GameRecord, GameRepository, InMemoryGameRepository}
+import chess.model.{Game, Move, GameStatus, Fen, ChessError, ChessClock, TimeControl, MoveEntry, GameRecord, GameRepository, InMemoryGameRepository, GameJson}
 import chess.util.{Observable, Observer}
 
 class Controller(val repository: GameRepository = InMemoryGameRepository()) extends ControllerInterface with Observable:
@@ -219,3 +219,20 @@ class Controller(val repository: GameRepository = InMemoryGameRepository()) exte
     _savedBrowseIdx = None
     _inReplay = false
     notifyObservers()
+
+  override def exportCurrentGameAsJson: String =
+    val record = GameRecord.create(_gameStates, _currentTimeControl)
+    GameJson.toRecordJsonString(record)
+
+  override def importGameFromJson(json: String): Either[ChessError, Game] =
+    repository.importRecordFromJson(json).map { record =>
+      if _inReplay then exitReplay()
+      _gameStates = record.gameStates
+      _game = _gameStates.last
+      _browseIdx = _gameStates.size - 1
+      _clock = None
+      _currentTimeControl = record.timeControl
+      _lastSavedStates = Some(_gameStates)
+      notifyObservers()
+      _game
+    }

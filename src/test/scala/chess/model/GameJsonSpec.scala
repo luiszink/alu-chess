@@ -83,3 +83,37 @@ class GameJsonSpec extends AnyWordSpec with Matchers:
       GameJson.fromJsonString("""{"status":"Playing"}""") shouldBe a[Left[?, ?]]
     }
   }
+
+  "GameJson.toRecordJson" should {
+    "include per-ply FEN entries" in {
+      val game0 = Game.newGame
+      val game1 = game0.applyMove(Move(Position(1, 4), Position(3, 4))).get
+      val game2 = game1.applyMove(Move(Position(6, 4), Position(4, 4))).get
+      val record = GameRecord.create(Vector(game0, game1, game2), None)
+
+      val json = GameJson.toRecordJson(record)
+      val moves = (json \ "moves").as[play.api.libs.json.JsArray].value
+
+      moves should have size 3
+      (moves.head \ "fen").asOpt[String] shouldBe Some(Fen.toFen(game0))
+      (moves(1) \ "fen").asOpt[String] shouldBe Some(Fen.toFen(game1))
+      (moves(2) \ "fen").asOpt[String] shouldBe Some(Fen.toFen(game2))
+    }
+  }
+
+  "GameJson.fromRecordJsonString" should {
+    "round-trip a full game record" in {
+      val game0 = Game.newGame
+      val game1 = game0.applyMove(Move(Position(1, 4), Position(3, 4))).get
+      val game2 = game1.applyMove(Move(Position(6, 4), Position(4, 4))).get
+      val states = Vector(game0, game1, game2)
+      val record = GameRecord.create(states, Some(TimeControl.Blitz3_0))
+
+      val json = GameJson.toRecordJsonString(record)
+      val back = GameJson.fromRecordJsonString(json)
+
+      back shouldBe a[Right[?, ?]]
+      back.toOption.get.gameStates.map(Fen.toFen) shouldBe states.map(Fen.toFen)
+      back.toOption.get.timeControl shouldBe Some(TimeControl.Blitz3_0)
+    }
+  }

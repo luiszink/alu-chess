@@ -331,6 +331,24 @@ class ControllerSpec extends AnyWordSpec with Matchers {
     }
   }
 
+  "JSON import/export" should {
+
+    "export current game and import it into another controller" in {
+      val source = Controller()
+      source.doMove(Move(Position(1, 4), Position(3, 4))) // e2-e4
+      source.doMove(Move(Position(6, 4), Position(4, 4))) // e7-e5
+      val json = source.exportCurrentGameAsJson
+
+      val target = Controller()
+      val result = target.importGameFromJson(json)
+
+      result shouldBe a[Right[?, ?]]
+      target.gameStatesCount shouldBe source.gameStatesCount
+      target.game.board shouldBe source.game.board
+      target.game.currentPlayer shouldBe source.game.currentPlayer
+    }
+  }
+
   // --- History navigation ---
 
   "browseBack" should {

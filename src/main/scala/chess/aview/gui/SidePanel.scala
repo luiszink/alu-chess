@@ -177,6 +177,8 @@ class SidePanel(controller: ControllerInterface, onNewGame: () => Unit, onQuit: 
 
   private val savePgnButton = styledButton("PGN speichern", () => savePgnFile())
   private val loadPgnButton = styledButton("PGN laden", () => loadPgnFile())
+  private val saveJsonButton = styledButton("JSON speichern", () => saveJsonFile())
+  private val loadJsonButton = styledButton("JSON laden", () => loadJsonFile())
 
   private def savePgnFile(): Unit =
     val chooser = new javax.swing.JFileChooser()
@@ -215,6 +217,39 @@ class SidePanel(controller: ControllerInterface, onNewGame: () => Unit, onQuit: 
               // Replay moves through controller
               replayPgnThroughController(content)
             case Left(err) => showError(err)
+        case scala.util.Failure(ex) => showError(s"Fehler beim Laden: ${ex.getMessage}")
+
+  private def saveJsonFile(): Unit =
+    val chooser = new javax.swing.JFileChooser()
+    chooser.setDialogTitle("JSON speichern")
+    chooser.setFileFilter(new javax.swing.filechooser.FileNameExtensionFilter("JSON-Dateien", "json"))
+    chooser.setSelectedFile(new java.io.File("game.json"))
+    val result = chooser.showSaveDialog(peer)
+    if result == javax.swing.JFileChooser.APPROVE_OPTION then
+      val file = chooser.getSelectedFile
+      val path = if file.getName.endsWith(".json") then file else new java.io.File(file.getAbsolutePath + ".json")
+      scala.util.Try {
+        val json = controller.exportCurrentGameAsJson
+        val writer = new java.io.PrintWriter(path)
+        try writer.write(json) finally writer.close()
+      } match
+        case scala.util.Failure(ex) => showError(s"Fehler beim Speichern: ${ex.getMessage}")
+        case _ => ()
+
+  private def loadJsonFile(): Unit =
+    val chooser = new javax.swing.JFileChooser()
+    chooser.setDialogTitle("JSON laden")
+    chooser.setFileFilter(new javax.swing.filechooser.FileNameExtensionFilter("JSON-Dateien", "json"))
+    val result = chooser.showOpenDialog(peer)
+    if result == javax.swing.JFileChooser.APPROVE_OPTION then
+      scala.util.Try {
+        val source = scala.io.Source.fromFile(chooser.getSelectedFile)
+        try source.mkString finally source.close()
+      } match
+        case scala.util.Success(content) =>
+          controller.importGameFromJson(content) match
+            case Left(err) => showError(err.message)
+            case Right(_)  => ()
         case scala.util.Failure(ex) => showError(s"Fehler beim Laden: ${ex.getMessage}")
 
   private def replayPgnThroughController(pgn: String): Unit =
@@ -405,6 +440,10 @@ class SidePanel(controller: ControllerInterface, onNewGame: () => Unit, onQuit: 
       contents += savePgnButton
       contents += Swing.VStrut(4)
       contents += loadPgnButton
+      contents += Swing.VStrut(4)
+      contents += saveJsonButton
+      contents += Swing.VStrut(4)
+      contents += loadJsonButton
       contents += Swing.VStrut(10)
     val scroll = new ScrollPane(panel):
       horizontalScrollBarPolicy = ScrollPane.BarPolicy.Never

@@ -16,3 +16,14 @@ class InMemoryGameRepository extends GameRepository:
 
   override def clear(): Unit =
     records = Vector.empty
+
+  override def exportRecordAsJson(id: String): Either[ChessError, String] =
+    findById(id)
+      .map(record => Right(GameJson.toRecordJsonString(record)))
+      .getOrElse(Left(ChessError.InvalidFenFormat(s"No game record with id '$id'")))
+
+  override def importRecordFromJson(json: String): Either[ChessError, GameRecord] =
+    GameJson.fromRecordJsonString(json).map { record =>
+      records = record +: records.filterNot(_.id == record.id)
+      record
+    }
