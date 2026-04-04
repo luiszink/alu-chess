@@ -140,6 +140,16 @@ class PgnParserSpec extends AnyWordSpec with Matchers:
         result.toOption.get.result shouldBe Some("1-0")
       }
 
+      "prefer movetext result over a conflicting Result tag" in {
+        val pgn =
+          """[Result "0-1"]
+            |
+            |1. e4 e5 1-0""".stripMargin
+        val result = parser.parseE(pgn)
+        result shouldBe a[Right[?, ?]]
+        result.toOption.get.result shouldBe Some("1-0")
+      }
+
       "parse PGN with result 1/2-1/2" in {
         val pgn = "1. e4 e5 1/2-1/2"
         val result = parser.parseE(pgn)
@@ -147,6 +157,36 @@ class PgnParserSpec extends AnyWordSpec with Matchers:
         result.toOption.get.result shouldBe Some("1/2-1/2")
       }
     }
+
+  "CombinatorPgnParser" should {
+
+    "return Left for malformed tags" in {
+      val malformedTagPgn = "[Event Test]\n\n1. e4 *"
+      CombinatorPgnParser.parseE(malformedTagPgn) shouldBe a[Left[?, ?]]
+    }
+
+    "return Left for unsupported movetext tokens" in {
+      CombinatorPgnParser.parseE("1. e4 $1 e5 *") shouldBe a[Left[?, ?]]
+    }
+  }
+
+  "FastPgnParser" should {
+
+    "ignore malformed tags while keeping valid tags and moves" in {
+      val pgn =
+        """[Event Test]
+          |[Site "Local"]
+          |
+          |1. e4 *""".stripMargin
+      val parsed = FastPgnParser.parseE(pgn)
+      parsed shouldBe a[Right[?, ?]]
+
+      val game = parsed.toOption.get
+      game.tags should contain("Site" -> "Local")
+      game.tags should not contain key("Event")
+      game.moves shouldBe Vector("e4")
+    }
+  }
 
   // ── Verify all three parsers agree ────────────────────────────────────────
 

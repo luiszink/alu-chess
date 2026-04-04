@@ -119,7 +119,33 @@ class FenParserSpec extends AnyWordSpec with Matchers:
         moved should contain(Position(0, 0))
         moved should contain(Position(0, 7))
       }
+
     }
+
+  "CombinatorFenParser" should {
+
+    "return Left for an invalid castling token" in {
+      val fen = "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkqa - 0 1"
+      CombinatorFenParser.parseE(fen) shouldBe a[Left[?, ?]]
+    }
+
+    "return Left for an invalid en-passant square token" in {
+      val fen = "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w - z9 0 1"
+      CombinatorFenParser.parseE(fen) shouldBe a[Left[?, ?]]
+    }
+
+    "treat a semantically invalid en-passant square as missing" in {
+      val fen = "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w - e4 0 1"
+      val result = CombinatorFenParser.parseE(fen)
+      result shouldBe a[Right[?, ?]]
+      result.toOption.get.lastMove shouldBe empty
+    }
+
+    "return Left for non-numeric clocks" in {
+      val fen = "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w - - x 1"
+      CombinatorFenParser.parseE(fen) shouldBe a[Left[?, ?]]
+    }
+  }
 
   // ── Verify all three parsers agree on a set of representative FENs ────────
 

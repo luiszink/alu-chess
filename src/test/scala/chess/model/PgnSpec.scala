@@ -135,6 +135,54 @@ class PgnSpec extends AnyWordSpec with Matchers {
     }
   }
 
+  "Pgn parser delegation" should {
+
+    val malformedTagPgn = "[Event Test]\n\n1. e4 *"
+
+    "delegate parseGameE to the active parser" in {
+      val originalParser = Pgn.activeParser
+      try {
+        Pgn.activeParser = PgnParserType.Combinator
+        Pgn.parseGameE(malformedTagPgn) shouldBe a[Left[?, ?]]
+
+        Pgn.activeParser = PgnParserType.Fast
+        val parsed = Pgn.parseGameE(malformedTagPgn)
+        parsed shouldBe a[Right[?, ?]]
+        parsed.toOption.get.moves should contain("e4")
+      } finally {
+        Pgn.activeParser = originalParser
+      }
+    }
+
+    "delegate parseGame to the active parser" in {
+      val originalParser = Pgn.activeParser
+      try {
+        Pgn.activeParser = PgnParserType.Combinator
+        Pgn.parseGame(malformedTagPgn) shouldBe None
+
+        Pgn.activeParser = PgnParserType.Fast
+        Pgn.parseGame(malformedTagPgn).get.moves should contain("e4")
+      } finally {
+        Pgn.activeParser = originalParser
+      }
+    }
+
+    "delegate replayE to the active parser" in {
+      val originalParser = Pgn.activeParser
+      try {
+        Pgn.activeParser = PgnParserType.Combinator
+        Pgn.replayE(malformedTagPgn) shouldBe a[Left[?, ?]]
+
+        Pgn.activeParser = PgnParserType.Fast
+        val replayed = Pgn.replayE(malformedTagPgn)
+        replayed shouldBe a[Right[?, ?]]
+        replayed.toOption.get.moveHistory should have size 1
+      } finally {
+        Pgn.activeParser = originalParser
+      }
+    }
+  }
+
   "Pgn.parseSAN" should {
 
     val game = Game.newGame
@@ -408,6 +456,11 @@ class PgnSpec extends AnyWordSpec with Matchers {
       val pgn = "1. e4 Zz9 2. d4 *"
       val result = Pgn.replayPgn(pgn)
       result shouldBe a[Left[?, ?]]
+    }
+
+    "map replayE errors to their message" in {
+      val pgn = "1. e4 Zz9 *"
+      Pgn.replayPgn(pgn) shouldBe Pgn.replayE(pgn).left.map(_.message)
     }
   }
 }
