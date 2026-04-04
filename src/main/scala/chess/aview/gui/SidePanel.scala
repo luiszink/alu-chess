@@ -1,13 +1,13 @@
 package chess.aview.gui
 
 import chess.controller.ControllerInterface
-import chess.model.{GameStatus, TestPositions, Fen, Move, ChessError, TimeControl, Pgn}
+import chess.model.{GameStatus, TestPositions, Fen, Move, ChessError, Pgn}
 
 import scala.swing.*
 import scala.swing.event.*
 import java.awt.{Color as AwtColor, Font, Dimension, Cursor}
 import java.awt.event.{MouseAdapter, MouseEvent}
-import javax.swing.{JOptionPane, BorderFactory, DefaultListCellRenderer}
+import javax.swing.{JOptionPane, BorderFactory, DefaultListCellRenderer, JTabbedPane}
 import javax.swing.border.EmptyBorder
 
 /** Side panel showing game status, move info, and control buttons. */
@@ -18,11 +18,19 @@ class SidePanel(controller: ControllerInterface, onNewGame: () => Unit, onQuit: 
   private val smallGap = 6
   private val sectionGap = 10
 
+  // Reuse the start-screen palette for a consistent app look.
+  private val bgMain        = new AwtColor(38, 36, 33)
+  private val cardBg        = new AwtColor(52, 50, 47)
+  private val cardBorder    = new AwtColor(60, 58, 55)
+  private val titleFg       = new AwtColor(240, 240, 240)
+  private val subtitleFg    = new AwtColor(140, 140, 140)
+  private val accentGreen   = new AwtColor(186, 202, 68)
+
   private val comboInputBg  = new AwtColor(55, 53, 50)
   private val comboSelBg    = new AwtColor(90, 88, 85)
   private val comboFg       = new AwtColor(230, 230, 230)
 
-  background = new AwtColor(38, 36, 33)
+  background = bgMain
   border = new EmptyBorder(8, 12, 8, 12)
 
   private def centerAlign(component: Component): Unit =
@@ -33,37 +41,74 @@ class SidePanel(controller: ControllerInterface, onNewGame: () => Unit, onQuit: 
     sep.peer.setForeground(new AwtColor(65, 63, 60))
     sep
 
+  private def sectionCard(title: String, items: Component*): BoxPanel =
+    val panel = new BoxPanel(Orientation.Vertical):
+      background = cardBg
+      border = Swing.CompoundBorder(
+        Swing.LineBorder(cardBorder, 1),
+        Swing.EmptyBorder(8, 8, 8, 8)
+      )
+      val titleLabel = new Label(title):
+        font = new Font("SansSerif", Font.BOLD, 12)
+        foreground = accentGreen
+      titleLabel.xLayoutAlignment = 0.0
+      contents += titleLabel
+      contents += Swing.VStrut(5)
+      items.zipWithIndex.foreach { case (item, idx) =>
+        contents += item
+        if idx < items.size - 1 then contents += Swing.VStrut(4)
+      }
+    panel.maximumSize = new Dimension(contentWidth, Short.MaxValue)
+    centerAlign(panel)
+    panel
+
+  private def tabContent(cards: Component*): ScrollPane =
+    val content = new BoxPanel(Orientation.Vertical):
+      background = bgMain
+      border = new EmptyBorder(10, 10, 10, 10)
+      cards.zipWithIndex.foreach { case (card, idx) =>
+        contents += card
+        if idx < cards.size - 1 then contents += Swing.VStrut(8)
+      }
+      contents += Swing.VGlue
+
+    new ScrollPane(content):
+      horizontalScrollBarPolicy = ScrollPane.BarPolicy.Never
+      verticalScrollBarPolicy = ScrollPane.BarPolicy.AsNeeded
+      border = Swing.EmptyBorder(0, 0, 0, 0)
+      peer.getViewport.setBackground(bgMain)
+
   // --- Status ---
   private val statusLabel = new Label(""):
-    font = new Font("SansSerif", Font.PLAIN, 15)
-    foreground = new AwtColor(200, 200, 200)
+    font = new Font("SansSerif", Font.BOLD, 16)
+    foreground = titleFg
     horizontalAlignment = Alignment.Center
   centerAlign(statusLabel)
 
   // --- Current player indicator ---
   private val playerLabel = new Label(""):
     font = new Font("SansSerif", Font.BOLD, 14)
-    foreground = new AwtColor(180, 180, 180)
+    foreground = subtitleFg
     horizontalAlignment = Alignment.Center
   centerAlign(playerLabel)
 
   // --- Move counter ---
   private val moveLabel = new Label(""):
     font = new Font("SansSerif", Font.PLAIN, 12)
-    foreground = new AwtColor(140, 140, 140)
+    foreground = subtitleFg
     horizontalAlignment = Alignment.Center
   centerAlign(moveLabel)
 
   // --- Cached fonts and colors for refresh() ---
   private val statusFontAlert  = new Font("SansSerif", Font.BOLD, 17)
-  private val statusFontNormal = new Font("SansSerif", Font.PLAIN, 15)
+  private val statusFontNormal = new Font("SansSerif", Font.BOLD, 16)
   private val colorCheck       = new AwtColor(255, 180, 70)
   private val colorCheckmate   = new AwtColor(235, 97, 80)
   private val colorDraw        = new AwtColor(180, 180, 100)
-  private val colorStatus      = new AwtColor(200, 200, 200)
+  private val colorStatus      = titleFg
 
   // --- Buttons ---
-  private val btnNormal = new AwtColor(68, 66, 63)
+  private val btnNormal = new AwtColor(64, 62, 59)
   private val btnHover  = new AwtColor(92, 90, 87)
   private val btnPress  = new AwtColor(50, 48, 46)
 
@@ -73,9 +118,10 @@ class SidePanel(controller: ControllerInterface, onNewGame: () => Unit, onQuit: 
     btn.foreground = new AwtColor(230, 230, 230)
     btn.background = btnNormal
     btn.opaque = true
-    btn.borderPainted = false
+    btn.borderPainted = true
     btn.focusPainted = false
     btn.cursor = new Cursor(Cursor.HAND_CURSOR)
+    btn.border = BorderFactory.createLineBorder(cardBorder, 1)
     btn.preferredSize = new Dimension(contentWidth, 34)
     btn.maximumSize = new Dimension(contentWidth, 34)
     btn.peer.addMouseListener(new MouseAdapter:
@@ -131,48 +177,15 @@ class SidePanel(controller: ControllerInterface, onNewGame: () => Unit, onQuit: 
       .filter(_.nonEmpty)
       .filterNot(t => t == "1-0" || t == "0-1" || t == "1/2-1/2" || t == "*")
 
-  // --- Time Control ---
-  private val timeControlLabel = new Label("Zeitkontrolle"):
-    font = new Font("SansSerif", Font.BOLD, 13)
-    foreground = new AwtColor(180, 180, 180)
-  centerAlign(timeControlLabel)
-
-  private val tcOptions = Vector("Keine Uhr") ++ TimeControl.presets.map(_.name)
-  private val timeControlCombo = new ComboBox(tcOptions):
-    font = new Font("SansSerif", Font.PLAIN, 12)
-    preferredSize = new Dimension(contentWidth, 30)
-    maximumSize = new Dimension(contentWidth, 30)
-    peer.setBackground(comboInputBg)
-    peer.setForeground(comboFg)
-    peer.setRenderer(new DefaultListCellRenderer:
-      override def getListCellRendererComponent(
-          list: javax.swing.JList[?], value: Object, index: Int,
-          isSelected: Boolean, cellHasFocus: Boolean): java.awt.Component =
-        val c = super.getListCellRendererComponent(list, value, index, isSelected, cellHasFocus)
-        c.setFont(new Font("SansSerif", Font.PLAIN, 12))
-        if isSelected then
-          c.setBackground(comboSelBg)
-          c.setForeground(comboFg)
-        else
-          c.setBackground(comboInputBg)
-          c.setForeground(comboFg)
-        c
-    )
-  centerAlign(timeControlCombo)
-
-  private def selectedTimeControl: Option[TimeControl] =
-    val idx = timeControlCombo.selection.index
-    if idx <= 0 then None else Some(TimeControl.presets(idx - 1))
-
   private val newGameButton = styledButton("Neues Spiel", () => {
-    controller.newGameWithClock(selectedTimeControl)
+    onNewGame()
   })
   private val quitButton = styledButton("Beenden", onQuit)
 
   // --- PGN Save/Load ---
   private val pgnSaveLabel = new Label("Spiel speichern"):
     font = new Font("SansSerif", Font.BOLD, 13)
-    foreground = new AwtColor(180, 180, 180)
+    foreground = subtitleFg
   centerAlign(pgnSaveLabel)
 
   private val savePgnButton = styledButton("PGN speichern", () => savePgnFile())
@@ -190,10 +203,9 @@ class SidePanel(controller: ControllerInterface, onNewGame: () => Unit, onQuit: 
       val file = chooser.getSelectedFile
       val path = if file.getName.endsWith(".pgn") then file else new java.io.File(file.getAbsolutePath + ".pgn")
       scala.util.Try {
-        val tc = selectedTimeControl
         // Use the latest game state for full history
         controller.browseToEnd()
-        val pgn = Pgn.toPgn(controller.game, timeControl = tc)
+        val pgn = Pgn.toPgn(controller.game)
         val writer = new java.io.PrintWriter(path)
         try writer.write(pgn) finally writer.close()
       } match
@@ -401,57 +413,56 @@ class SidePanel(controller: ControllerInterface, onNewGame: () => Unit, onQuit: 
     val dialog = parentWindow match
       case Some(w) => new javax.swing.JDialog(w, "Werkzeuge")
       case None    => new javax.swing.JDialog(null: java.awt.Frame, "Werkzeuge")
-    dialog.getContentPane.setBackground(new java.awt.Color(38, 36, 33))
-    val panel = new BoxPanel(Orientation.Vertical):
-      background = new AwtColor(38, 36, 33)
-      border = new EmptyBorder(12, 12, 12, 12)
-      contents += fenInputLabel
-      contents += Swing.VStrut(4)
-      contents += fenInputField
-      contents += Swing.VStrut(4)
-      contents += fillFenButton
-      contents += Swing.VStrut(4)
-      contents += loadFenButton
-      contents += Swing.VStrut(10)
-      contents += styledSeparator()
-      contents += Swing.VStrut(10)
-      contents += testPositionLabel
-      contents += Swing.VStrut(4)
-      contents += positionCombo
-      contents += Swing.VStrut(4)
-      contents += positionDescLabel
-      contents += Swing.VStrut(4)
-      contents += loadPositionButton
-      contents += Swing.VStrut(10)
-      contents += styledSeparator()
-      contents += Swing.VStrut(10)
-      contents += pgnInputLabel
-      contents += Swing.VStrut(4)
-      contents += pgnHintLabel
-      contents += Swing.VStrut(4)
-      contents += pgnScrollPane
-      contents += Swing.VStrut(4)
-      contents += applyPgnButton
-      contents += Swing.VStrut(10)
-      contents += styledSeparator()
-      contents += Swing.VStrut(10)
-      contents += pgnSaveLabel
-      contents += Swing.VStrut(4)
-      contents += savePgnButton
-      contents += Swing.VStrut(4)
-      contents += loadPgnButton
-      contents += Swing.VStrut(4)
-      contents += saveJsonButton
-      contents += Swing.VStrut(4)
-      contents += loadJsonButton
-      contents += Swing.VStrut(10)
-    val scroll = new ScrollPane(panel):
-      horizontalScrollBarPolicy = ScrollPane.BarPolicy.Never
-      verticalScrollBarPolicy = ScrollPane.BarPolicy.AsNeeded
-      border = Swing.EmptyBorder(0, 0, 0, 0)
-      preferredSize = new Dimension(320, 560)
-      peer.getViewport.setBackground(new java.awt.Color(38, 36, 33))
-    dialog.add(scroll.peer)
+    dialog.getContentPane.setBackground(bgMain)
+
+    val header = new BoxPanel(Orientation.Vertical):
+      background = bgMain
+      border = new EmptyBorder(12, 14, 8, 14)
+      val title = new Label("Werkzeuge"):
+        font = new Font("SansSerif", Font.BOLD, 26)
+        foreground = titleFg
+      val subtitle = new Label("Import, Export und Stellungspflege"):
+        font = new Font("SansSerif", Font.PLAIN, 13)
+        foreground = subtitleFg
+      title.xLayoutAlignment = 0.0
+      subtitle.xLayoutAlignment = 0.0
+      contents += title
+      contents += Swing.VStrut(2)
+      contents += subtitle
+
+    val setupTab = tabContent(
+      sectionCard("FEN", fenInputLabel, fenInputField, fillFenButton, loadFenButton),
+      sectionCard("Teststellungen", testPositionLabel, positionCombo, positionDescLabel, loadPositionButton)
+    )
+
+    val importTab = tabContent(
+      sectionCard("PGN anwenden", pgnInputLabel, pgnHintLabel, pgnScrollPane, applyPgnButton),
+      sectionCard("Import", loadPgnButton, loadJsonButton)
+    )
+
+    val exportTab = tabContent(
+      sectionCard("Export", pgnSaveLabel, savePgnButton, saveJsonButton)
+    )
+
+    val tabs = new JTabbedPane()
+    tabs.setBackground(bgMain)
+    tabs.setForeground(titleFg)
+    tabs.setFont(new Font("SansSerif", Font.BOLD, 12))
+    tabs.setFocusable(false)
+    tabs.addTab("Stellung", setupTab.peer)
+    tabs.addTab("Import", importTab.peer)
+    tabs.addTab("Export", exportTab.peer)
+    tabs.setSelectedIndex(0)
+
+    val tabsWrapper = Component.wrap(tabs)
+    tabsWrapper.preferredSize = new Dimension(360, 560)
+
+    val root = new BorderPanel:
+      background = bgMain
+      add(header, BorderPanel.Position.North)
+      add(tabsWrapper, BorderPanel.Position.Center)
+
+    dialog.add(root.peer)
     dialog.pack()
     dialog.setLocationRelativeTo(peer)
     dialog
