@@ -90,5 +90,10 @@ class GameRepositorySpec extends AnyWordSpec with Matchers with BeforeAndAfterEa
       repo.findById("r-import") shouldBe defined
       repo.findById("r-import").get.gameStates.map(Fen.toFen) shouldBe original.gameStates.map(Fen.toFen)
     }
+
+    "return Left when exporting an unknown id as JSON" in {
+      val missing = repo.exportRecordAsJson("missing-id")
+      missing shouldBe a[Left[?, ?]]
+    }
   }
 }

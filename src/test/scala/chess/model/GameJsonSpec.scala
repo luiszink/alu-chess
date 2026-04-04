@@ -116,4 +116,41 @@ class GameJsonSpec extends AnyWordSpec with Matchers:
       back.toOption.get.gameStates.map(Fen.toFen) shouldBe states.map(Fen.toFen)
       back.toOption.get.timeControl shouldBe Some(TimeControl.Blitz3_0)
     }
+
+    "accept legacy JSON with only a fen field" in {
+      val legacy = s"""{"fen":"$startFen"}"""
+
+      val back = GameJson.fromRecordJsonString(legacy)
+
+      back shouldBe a[Right[?, ?]]
+      back.toOption.get.gameStates should have size 1
+      Fen.toFen(back.toOption.get.gameStates.head) shouldBe startFen
+      back.toOption.get.moveCount shouldBe 0
+    }
+
+    "return Left for an empty moves array" in {
+      val json = """{"moves": []}"""
+      GameJson.fromRecordJsonString(json) shouldBe a[Left[?, ?]]
+    }
+
+    "derive defaults when optional record fields are missing" in {
+      val game0 = Game.newGame
+      val game1 = game0.applyMove(Move(Position(1, 4), Position(3, 4))).get
+
+      val minimal =
+        s"""{
+           |  "moves": [
+           |    {"fen": "${Fen.toFen(game0)}"},
+           |    {"fen": "${Fen.toFen(game1)}"}
+           |  ]
+           |}""".stripMargin
+
+      val back = GameJson.fromRecordJsonString(minimal)
+
+      back shouldBe a[Right[?, ?]]
+      back.toOption.get.moveCount shouldBe 1
+      back.toOption.get.pgn should not be empty
+      back.toOption.get.result shouldBe "*"
+      back.toOption.get.timeControl shouldBe None
+    }
   }
