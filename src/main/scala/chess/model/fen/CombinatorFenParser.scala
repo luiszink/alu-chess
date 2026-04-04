@@ -12,10 +12,9 @@ object CombinatorFenParser extends RegexParsers with FenParser:
   override val skipWhitespace: Boolean = false
 
   private def pieceChar: Parser[Piece] =
-    "[KQRBNPkqrbnp]".r >> { s =>
-      FenSharedLogic.charToPiece(s.head) match
-        case Some(p) => success(p)
-        case None    => failure(s"Unexpected piece character: $s")
+    "[KQRBNPkqrbnp]".r ^^ { s =>
+      // Safe by construction: regex only admits piece chars known to charToPiece.
+      FenSharedLogic.charToPiece(s.head).get
     }
 
   private def emptySquares: Parser[Vector[Option[Piece]]] =
@@ -27,8 +26,8 @@ object CombinatorFenParser extends RegexParsers with FenParser:
   private def rankLine: Parser[Vector[Option[Piece]]] =
     rep1(rankToken) >> { parts =>
       val cells = parts.flatten.toVector
-      if cells.length == 8 then success(cells)
-      else failure(s"Rank has ${cells.length} squares, expected 8")
+      // parseE pre-validates rank widths via FenSharedLogic.parseBoardE.
+      success(cells)
     }
 
   private def boardP: Parser[Board] =
@@ -74,7 +73,6 @@ object CombinatorFenParser extends RegexParsers with FenParser:
             val normalized = s"${normed(0)} ${normed(1)} ${normed(2)} ${normed(3)} $half $full"
             parseAll(fenP, normalized) match
               case Success(g, _) => Right(g)
-              case Failure(msg, _)  => Left(ChessError.InvalidFenFormat(msg))
-              case Error(msg, _)    => Left(ChessError.InvalidFenFormat(msg))
+              case noSuccess: NoSuccess => Left(ChessError.InvalidFenFormat(noSuccess.msg))
           }
         yield game
