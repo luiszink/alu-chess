@@ -68,5 +68,32 @@ class GameRepositorySpec extends AnyWordSpec with Matchers with BeforeAndAfterEa
       repo.clear()
       repo.findAll() shouldBe empty
     }
+
+    "export a record as JSON by id" in {
+      val record = makeRecord("r-json")
+      repo.save(record)
+
+      val json = repo.exportRecordAsJson("r-json")
+
+      json shouldBe a[Right[?, ?]]
+      json.toOption.get should include("\"id\":\"r-json\"")
+      json.toOption.get should include("\"moves\"")
+    }
+
+    "import a record from JSON" in {
+      val original = makeRecord("r-import")
+      val json = GameJson.toRecordJsonString(original)
+
+      val imported = repo.importRecordFromJson(json)
+
+      imported shouldBe a[Right[?, ?]]
+      repo.findById("r-import") shouldBe defined
+      repo.findById("r-import").get.gameStates.map(Fen.toFen) shouldBe original.gameStates.map(Fen.toFen)
+    }
+
+    "return Left when exporting an unknown id as JSON" in {
+      val missing = repo.exportRecordAsJson("missing-id")
+      missing shouldBe a[Left[?, ?]]
+    }
   }
 }

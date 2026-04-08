@@ -35,3 +35,5 @@ trait ControllerInterface:
   def loadReplay(id: String): Boolean
   def isInReplay: Boolean
   def exitReplay(): Unit
+  def exportCurrentGameAsJson: String
+  def importGameFromJson(json: String): Either[ChessError, Game]

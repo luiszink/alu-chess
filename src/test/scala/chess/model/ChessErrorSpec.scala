@@ -55,4 +55,12 @@ class ChessErrorSpec extends AnyWordSpec with Matchers:
     "return non-empty message for GameAlreadyOver" in {
       ChessError.GameAlreadyOver(GameStatus.Checkmate).message should include("Checkmate")
     }
+    "return exact message for InvalidPgnFormat" in {
+      ChessError.InvalidPgnFormat("detail").message shouldBe "Invalid PGN: detail"
+    }
+    "return non-empty message for InvalidPgnMove" in {
+      val msg = ChessError.InvalidPgnMove(3, "Qh9").message
+      msg should include("3")
+      msg should include("Qh9")
+    }
   }

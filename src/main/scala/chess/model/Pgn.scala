@@ -1,10 +1,32 @@
 package chess.model
 
+import chess.model.pgn.{PgnGame => ParsedPgnGame, PgnSharedLogic}
+
 import java.time.LocalDate
 import java.time.format.DateTimeFormatter
 
-/** PGN (Portable Game Notation) export and import. */
+/** PGN (Portable Game Notation) export and import.
+  *
+  * Parsing is delegated to the currently active [[PgnParserType]]; switch at any time:
+  * {{{
+  *   Pgn.activeParser = PgnParserType.Regex
+  *   Pgn.activeParser = PgnParserType.Combinator
+  *   Pgn.activeParser = PgnParserType.Fast   // default
+  * }}}
+  */
 object Pgn:
+
+  /** Currently active parser. Change to switch between implementations. */
+  var activeParser: PgnParserType = PgnParserType.Combinator
+
+  /** Parse a PGN string into a PgnGame (tags + SAN tokens). Returns Left with error detail on failure. */
+  def parseGameE(pgn: String): Either[ChessError, ParsedPgnGame] = activeParser.instance.parseE(pgn)
+
+  /** Parse a PGN string into a PgnGame. Returns None on invalid input. */
+  def parseGame(pgn: String): Option[ParsedPgnGame] = activeParser.instance.parse(pgn)
+
+  /** Parse a PGN string and replay all moves, returning the final Game state. */
+  def replayE(pgn: String): Either[ChessError, Game] = activeParser.instance.replayE(pgn)
 
   /** Export a game as PGN string. */
   def toPgn(game: Game, white: String = "White", black: String = "Black",
@@ -52,119 +74,22 @@ object Pgn:
 
   /** Parse a SAN move string in the context of a game. Returns the corresponding Move. */
   def parseSAN(san: String, game: Game): Option[Move] =
-    val board = game.board
-    val color = game.currentPlayer
-    val legal = MoveValidator.legalMoves(board, color, game.movedPieces, game.lastMove)
-    val cleaned = san.replaceAll("[+#?!]", "").trim
+    PgnSharedLogic.parseSAN(san, game)
 
-    // Castling
-    if cleaned == "O-O-O" || cleaned == "0-0-0" then
-      val row = if color == Color.White then 0 else 7
-      return legal.find(m => m.from == Position(row, 4) && m.to == Position(row, 2))
-    if cleaned == "O-O" || cleaned == "0-0" then
-      val row = if color == Color.White then 0 else 7
-      return legal.find(m => m.from == Position(row, 4) && m.to == Position(row, 6))
+  /** Parse either coordinate notation or SAN in the context of a game. */
+  def parseMoveToken(token: String, game: Game): Either[ChessError, Move] =
+    val cleaned = token.trim.replaceAll("[+#?!]+$", "")
+    parseCoordinateToken(cleaned).orElse(parseSAN(cleaned, game).toRight(ChessError.InvalidMoveFormat(token)))
 
-    // Split promotion
-    val (moveStr, promotion) =
-      if cleaned.contains("=") then
-        val parts = cleaned.split("=")
-        (parts(0), Some(parts(1).charAt(0).toUpper))
-      else (cleaned, None)
-
-    val pieceChars = "KQRBN"
-    if moveStr.nonEmpty && pieceChars.contains(moveStr(0)) then
-      parsePieceMove(moveStr, legal, board, color, promotion)
-    else
-      parsePawnMove(moveStr, cleaned, legal, board, color, promotion)
-
-  private def parsePieceMove(
-    moveStr: String, legal: List[Move], board: Board, color: Color, promotion: Option[Char]
-  ): Option[Move] =
-    val pieceChar = moveStr(0)
-    val rest = moveStr.drop(1).replace("x", "")
-    if rest.length < 2 then return None
-
-    val destStr = rest.takeRight(2)
-    val disambig = rest.dropRight(2)
-
-    Position.fromString(destStr).flatMap { to =>
-      val candidates = legal.filter { m =>
-        m.to == to && board.cell(m.from).exists(p => p.symbol.toUpper == pieceChar && p.color == color)
-      }
-
-      val filtered = disambig.length match
-        case 0 => candidates
-        case 1 if disambig(0).isLetter => candidates.filter(_.from.col == disambig(0) - 'a')
-        case 1 if disambig(0).isDigit  => candidates.filter(_.from.row == disambig(0).asDigit - 1)
-        case 2 => Position.fromString(disambig).map(p => candidates.filter(_.from == p)).getOrElse(Nil)
-        // $COVERAGE-OFF$ disambig > 2 chars is not possible with standard SAN
-        case _ => Nil
-        // $COVERAGE-ON$
-
-      filtered.headOption.map(m => m.copy(promotion = promotion.orElse(m.promotion)))
-    }
-
-  private def parsePawnMove(
-    moveStr: String, originalStr: String, legal: List[Move], board: Board, color: Color, promotion: Option[Char]
-  ): Option[Move] =
-    val str = moveStr.replace("x", "")
-    if str.length < 2 then return None
-
-    val destStr = str.takeRight(2)
-    val fileHint =
-      if str.length > 2 then Some(str(0) - 'a')
-      // $COVERAGE-OFF$ unreachable with standard SAN (file + 'x' always makes str.length > 2)
-      else if originalStr.contains("x") && originalStr.nonEmpty && originalStr(0).isLetter then
-        Some(originalStr(0) - 'a')
-      // $COVERAGE-ON$
-      else None
-
-    Position.fromString(destStr).flatMap { to =>
-      val candidates = legal.filter { m =>
-        m.to == to && board.cell(m.from).exists {
-          case Piece.Pawn(c) => c == color
-          case _ => false
-        }
-      }
-
-      val filtered = fileHint match
-        case Some(col) => candidates.filter(_.from.col == col)
-        case None      => candidates
-
-      filtered.headOption.map(m => m.copy(promotion = promotion.orElse(m.promotion)))
-    }
+  private def parseCoordinateToken(token: String): Either[ChessError, Move] =
+    if token.matches("^[a-h][1-8][a-h][1-8]$") then Move.fromStringE(token)
+    else if token.matches("^[a-h][1-8][a-h][1-8][qrbnQRBN]$") then
+      val from = token.substring(0, 2)
+      val to = token.substring(2, 4)
+      val promo = token.substring(4, 5).toUpperCase
+      Move.fromStringE(s"$from $to $promo")
+    else Left(ChessError.InvalidMoveFormat(token))
 
   /** Replay a PGN movetext (SAN moves) onto a new game. Returns the final game or error. */
   def replayPgn(pgn: String): Either[String, Game] =
-    val movetext = extractMovetext(pgn)
-    val tokens = extractSanTokens(movetext)
-    tokens.zipWithIndex.foldLeft[Either[String, Game]](Right(Game.newGame)) {
-      case (Left(err), _) => Left(err)
-      case (Right(game), (token, idx)) =>
-        if game.status.isTerminal then Right(game)
-        else
-          parseSAN(token, game) match
-            case Some(move) =>
-              game.applyMoveE(move) match
-                case Right(updated) => Right(updated)
-                // $COVERAGE-OFF$ parseSAN already filters via legalMoves; applyMoveE cannot fail
-                case Left(err)      => Left(s"Zug ${idx + 1} ('$token'): ${err.message}")
-                // $COVERAGE-ON$
-            case None => Left(s"Zug ${idx + 1}: '$token' nicht erkannt")
-    }
-
-  private def extractMovetext(pgn: String): String =
-    val lines = pgn.linesIterator.filterNot(_.startsWith("[")).mkString(" ")
-    lines.trim
-
-  private def extractSanTokens(movetext: String): Vector[String] =
-    movetext
-      .replaceAll("\\{[^}]*\\}", " ")
-      .replaceAll("\\([^)]*\\)", " ")
-      .replaceAll("\\d+\\.", " ")
-      .split("\\s+")
-      .toVector
-      .map(_.trim)
-      .filter(_.nonEmpty)
-      .filterNot(t => t == "1-0" || t == "0-1" || t == "1/2-1/2" || t == "*")
+    replayE(pgn).left.map(_.message)

@@ -6,3 +6,5 @@ trait GameRepository:
   def findById(id: String): Option[GameRecord]
   def delete(id: String): Unit
   def clear(): Unit
+  def exportRecordAsJson(id: String): Either[ChessError, String]
+  def importRecordFromJson(json: String): Either[ChessError, GameRecord]

@@ -135,6 +135,54 @@ class PgnSpec extends AnyWordSpec with Matchers {
     }
   }
 
+  "Pgn parser delegation" should {
+
+    val malformedTagPgn = "[Event Test]\n\n1. e4 *"
+
+    "delegate parseGameE to the active parser" in {
+      val originalParser = Pgn.activeParser
+      try {
+        Pgn.activeParser = PgnParserType.Combinator
+        Pgn.parseGameE(malformedTagPgn) shouldBe a[Left[?, ?]]
+
+        Pgn.activeParser = PgnParserType.Fast
+        val parsed = Pgn.parseGameE(malformedTagPgn)
+        parsed shouldBe a[Right[?, ?]]
+        parsed.toOption.get.moves should contain("e4")
+      } finally {
+        Pgn.activeParser = originalParser
+      }
+    }
+
+    "delegate parseGame to the active parser" in {
+      val originalParser = Pgn.activeParser
+      try {
+        Pgn.activeParser = PgnParserType.Combinator
+        Pgn.parseGame(malformedTagPgn) shouldBe None
+
+        Pgn.activeParser = PgnParserType.Fast
+        Pgn.parseGame(malformedTagPgn).get.moves should contain("e4")
+      } finally {
+        Pgn.activeParser = originalParser
+      }
+    }
+
+    "delegate replayE to the active parser" in {
+      val originalParser = Pgn.activeParser
+      try {
+        Pgn.activeParser = PgnParserType.Combinator
+        Pgn.replayE(malformedTagPgn) shouldBe a[Left[?, ?]]
+
+        Pgn.activeParser = PgnParserType.Fast
+        val replayed = Pgn.replayE(malformedTagPgn)
+        replayed shouldBe a[Right[?, ?]]
+        replayed.toOption.get.moveHistory should have size 1
+      } finally {
+        Pgn.activeParser = originalParser
+      }
+    }
+  }
+
   "Pgn.parseSAN" should {
 
     val game = Game.newGame
@@ -338,6 +386,32 @@ class PgnSpec extends AnyWordSpec with Matchers {
     }
   }
 
+  "Pgn.parseMoveToken" should {
+
+    "parse coordinate notation" in {
+      Pgn.parseMoveToken("e2e4", Game.newGame) shouldBe Right(Move(Position(1, 4), Position(3, 4)))
+    }
+
+    "parse SAN notation" in {
+      Pgn.parseMoveToken("Nf3", Game.newGame) shouldBe Right(Move(Position(0, 6), Position(2, 5)))
+    }
+
+    "apply the reported mixed SAN sequence" in {
+      val tokens = Vector("e4", "c6", "d4", "d5", "Nc3", "dxe4", "Nxe4", "Nd7", "Ng5", "Ngf6", "Bd3", "e6", "N1f3", "h6", "Nxe6", "Qe7", "O-O", "fxe6")
+      val finalGame = tokens.foldLeft(Game.newGame) { (game, token) =>
+        val move = Pgn.parseMoveToken(token, game).toOption.get
+        game.applyMove(move).get
+      }
+
+      finalGame.moveHistory should have size tokens.size
+      finalGame.currentPlayer shouldBe Color.White
+    }
+
+    "return Left for invalid tokens" in {
+      Pgn.parseMoveToken("xyz", Game.newGame) shouldBe a[Left[?, ?]]
+    }
+  }
+
   "Pgn.replayPgn" should {
 
     "replay a simple game" in {
@@ -408,6 +482,11 @@ class PgnSpec extends AnyWordSpec with Matchers {
       val pgn = "1. e4 Zz9 2. d4 *"
       val result = Pgn.replayPgn(pgn)
       result shouldBe a[Left[?, ?]]
+    }
+
+    "map replayE errors to their message" in {
+      val pgn = "1. e4 Zz9 *"
+      Pgn.replayPgn(pgn) shouldBe Pgn.replayE(pgn).left.map(_.message)
     }
   }
 }
