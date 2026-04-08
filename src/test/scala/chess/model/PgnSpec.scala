@@ -386,6 +386,32 @@ class PgnSpec extends AnyWordSpec with Matchers {
     }
   }
 
+  "Pgn.parseMoveToken" should {
+
+    "parse coordinate notation" in {
+      Pgn.parseMoveToken("e2e4", Game.newGame) shouldBe Right(Move(Position(1, 4), Position(3, 4)))
+    }
+
+    "parse SAN notation" in {
+      Pgn.parseMoveToken("Nf3", Game.newGame) shouldBe Right(Move(Position(0, 6), Position(2, 5)))
+    }
+
+    "apply the reported mixed SAN sequence" in {
+      val tokens = Vector("e4", "c6", "d4", "d5", "Nc3", "dxe4", "Nxe4", "Nd7", "Ng5", "Ngf6", "Bd3", "e6", "N1f3", "h6", "Nxe6", "Qe7", "O-O", "fxe6")
+      val finalGame = tokens.foldLeft(Game.newGame) { (game, token) =>
+        val move = Pgn.parseMoveToken(token, game).toOption.get
+        game.applyMove(move).get
+      }
+
+      finalGame.moveHistory should have size tokens.size
+      finalGame.currentPlayer shouldBe Color.White
+    }
+
+    "return Left for invalid tokens" in {
+      Pgn.parseMoveToken("xyz", Game.newGame) shouldBe a[Left[?, ?]]
+    }
+  }
+
   "Pgn.replayPgn" should {
 
     "replay a simple game" in {

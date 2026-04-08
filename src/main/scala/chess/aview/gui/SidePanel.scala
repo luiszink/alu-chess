@@ -155,16 +155,6 @@ class SidePanel(controller: ControllerInterface, onNewGame: () => Unit, onQuit: 
       case Left(err)  => showError(err.message)
       case Right(_)   => fenInputField.text = Fen.toFen(controller.game)
 
-  private def parseCoordinateToken(token: String): Either[ChessError, Move] =
-    val stripped = token.trim.replaceAll("[+#?!]+$", "")
-    if stripped.matches("^[a-h][1-8][a-h][1-8]$") then Move.fromStringE(stripped)
-    else if stripped.matches("^[a-h][1-8][a-h][1-8][qrbnQRBN]$") then
-      val from = stripped.substring(0, 2)
-      val to = stripped.substring(2, 4)
-      val promo = stripped.substring(4, 5).toUpperCase
-      Move.fromStringE(s"$from $to $promo")
-    else Left(ChessError.InvalidMoveFormat(token))
-
   private def extractPgnTokens(text: String): Vector[String] =
     val withoutComments = text
       .replaceAll("\\{[^}]*\\}", " ")
@@ -312,7 +302,7 @@ class SidePanel(controller: ControllerInterface, onNewGame: () => Unit, onQuit: 
     foreground = new AwtColor(180, 180, 180)
   centerAlign(pgnInputLabel)
 
-  private val pgnHintLabel = new Label("Akzeptiert Koordinatenzuege, z. B. e2e4 e7e5"):
+  private val pgnHintLabel = new Label("Akzeptiert SAN oder Koordinatenzuege, z. B. e4, Nxe6, O-O oder e2e4"):
     font = new Font("SansSerif", Font.ITALIC, 11)
     foreground = new AwtColor(150, 150, 150)
     horizontalAlignment = Alignment.Center
@@ -343,7 +333,7 @@ class SidePanel(controller: ControllerInterface, onNewGame: () => Unit, onQuit: 
           case (Left(err), _) => Left(err)
           case (Right(_), (token, idx)) =>
             for
-              move <- parseCoordinateToken(token).left.map(err => s"Zug ${idx + 1} ('$token'): ${err.message}")
+              move <- Pgn.parseMoveToken(token, controller.game).left.map(err => s"Zug ${idx + 1} ('$token'): ${err.message}")
               _ <- controller.doMoveResult(move).left.map(err => s"Zug ${idx + 1} ('$token'): ${err.message}")
             yield ()
         }

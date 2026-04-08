@@ -76,6 +76,20 @@ object Pgn:
   def parseSAN(san: String, game: Game): Option[Move] =
     PgnSharedLogic.parseSAN(san, game)
 
+  /** Parse either coordinate notation or SAN in the context of a game. */
+  def parseMoveToken(token: String, game: Game): Either[ChessError, Move] =
+    val cleaned = token.trim.replaceAll("[+#?!]+$", "")
+    parseCoordinateToken(cleaned).orElse(parseSAN(cleaned, game).toRight(ChessError.InvalidMoveFormat(token)))
+
+  private def parseCoordinateToken(token: String): Either[ChessError, Move] =
+    if token.matches("^[a-h][1-8][a-h][1-8]$") then Move.fromStringE(token)
+    else if token.matches("^[a-h][1-8][a-h][1-8][qrbnQRBN]$") then
+      val from = token.substring(0, 2)
+      val to = token.substring(2, 4)
+      val promo = token.substring(4, 5).toUpperCase
+      Move.fromStringE(s"$from $to $promo")
+    else Left(ChessError.InvalidMoveFormat(token))
+
   /** Replay a PGN movetext (SAN moves) onto a new game. Returns the final game or error. */
   def replayPgn(pgn: String): Either[String, Game] =
     replayE(pgn).left.map(_.message)
