@@ -31,7 +31,8 @@ Inspiration: [Lichess](https://lichess.org/), aber wesentlich einfacher.
 | Testing | ScalaTest 3.2.19 |
 | Coverage | sbt-scoverage 2.2.2 |
 | GUI | Scala Swing 3.0.0 |
-| Architektur | MVC + Observer |
+| REST API | Http4s 0.23 + Circe |
+| Architektur | MVC + Observer, Multi-Module (sbt) |
 
 ---
 
@@ -54,10 +55,20 @@ sbt compile
 sbt test
 ```
 
-### Anwendung starten
+### Anwendung starten (TUI + GUI)
 
 ```bash
-sbt run
+sbt "controller/run"
+```
+
+### REST API starten
+
+```bash
+# Model-Service (Port 8082)
+sbt "model/runMain chess.model.api.ModelServer"
+
+# Controller-Service (Port 8081)
+sbt "controller/runMain chess.controller.api.ControllerServer"
 ```
 
 ### Coverage-Report erzeugen
@@ -66,71 +77,100 @@ sbt run
 sbt clean coverage test coverageReport
 ```
 
-Der Report liegt anschließend unter `target/scala-3.6.4/scoverage-report/index.html`.
+Der Report liegt anschließend unter:
+- `model/target/scala-3.6.4/scoverage-report/index.html`
+- `controller/target/scala-3.6.4/scoverage-report/index.html`
 
 ---
 
 ## Projektstruktur
 
-```
-src/main/scala/chess/
-├── Chess.scala                    # Entry Point (@main)
-├── model/
-│   ├── Piece.scala                # Figurtypen und Farben (enum)
-│   ├── Board.scala                # Spielfeld (8×8, immutable)
-│   ├── Game.scala                 # Spielzustand, Zugausführung, Statusprüfung
-│   ├── Move.scala                 # Zug-Datentyp mit Promotion, String-Parsing
-│   ├── Position.scala             # Feld auf dem Brett (algebraische Notation)
-│   ├── MoveValidator.scala        # Zugvalidierung, Schach-Erkennung, legale Züge
-│   ├── Fen.scala                  # FEN-Parser und -Serializer
-│   ├── Pgn.scala                  # PGN-Export und -Replay
-│   ├── MoveEntry.scala            # Zugeintrag mit SAN-Notation
-│   ├── ChessClock.scala           # Schachuhr mit Zeitkontrollen
-│   ├── ChessError.scala           # Typisierte Fehlermeldungen (enum)
-│   ├── GameRecord.scala           # Abgeschlossene Partie (PGN, Züge, Ergebnis)
-│   ├── GameRepository.scala       # Repository-Trait für Partie-Archiv
-│   ├── InMemoryGameRepository.scala # In-Memory-Implementierung
-│   └── TestPositions.scala        # Vordefinierte Teststellungen für GUI
-├── controller/
-│   ├── Controller.scala           # Use-Case-Koordination, Observable, Zustandsverwaltung
-│   └── ControllerInterface.scala  # Trait für Controller-API
-├── aview/
-│   ├── TUI.scala                  # Text User Interface (Observer)
-│   └── gui/
-│       ├── SwingGUI.scala         # Hauptfenster (Swing Frame)
-│       ├── BoardPanel.scala       # Brettdarstellung und Zuginteraktion
-│       ├── SidePanel.scala        # Seitenpanel (FEN-Eingabe, Spielstart)
-│       ├── NavBar.scala           # Navigationsleiste
-│       ├── HistoryPanel.scala     # Zughistorie-Anzeige
-│       ├── HistoryListPanel.scala # Partie-Archiv-Liste
-│       ├── ClockPanel.scala       # Schachuhr-Anzeige
-│       ├── StartPanel.scala       # Startbildschirm mit Zeitauswahl
-│       └── PromotionDialog.scala  # Dialog für Bauernumwandlung
-└── util/
-    ├── Observable.scala           # Observer-Pattern (Trait)
-    └── Observer.scala             # Observer-Interface
+Das Projekt ist als **sbt Multi-Module Build** organisiert:
 
-src/test/scala/chess/              # 16 Test-Suites (Spiegel der Hauptstruktur)
-
-docs/
-├── ai-context.md                  # Projekt-Memory für KI-Agenten
-├── architecture-decisions.md      # Architekturentscheidungen (ADR)
-├── presentation-notes.md          # Wöchentliche Präsentationsnotizen
-├── chess-rules-todo.md            # Implementierungs-Roadmap (alle Stufen abgeschlossen)
-├── agent-prompts.md               # Copy/Paste-Prompts für spezialisierte KI-Rollen
-└── commit-rules.md                # Commit-Disziplin und Message-Format
 ```
+alu-chess/
+├── build.sbt                          # Root-Build mit Modul-Definitionen
+├── model/                             # Model-Modul (reine Domain-Logik)
+│   └── src/main/scala/chess/
+│       ├── model/
+│       │   ├── Board.scala            # Spielfeld (8×8, immutable)
+│       │   ├── Game.scala             # Spielzustand, Zugausführung, Statusprüfung
+│       │   ├── Piece.scala            # Figurtypen und Farben (enum)
+│       │   ├── Position.scala         # Feld auf dem Brett (algebraische Notation)
+│       │   ├── Move.scala             # Zug-Datentyp mit Promotion, String-Parsing
+│       │   ├── MoveValidator.scala    # Zugvalidierung, Schach-Erkennung, legale Züge
+│       │   ├── Fen.scala              # FEN-Parser und -Serializer
+│       │   ├── MoveEntry.scala        # Zugeintrag mit SAN-Notation
+│       │   ├── ChessClock.scala       # Schachuhr mit Zeitkontrollen
+│       │   ├── ChessError.scala       # Typisierte Fehlermeldungen (enum)
+│       │   ├── GameJson.scala         # JSON-Serialisierung (Circe)
+│       │   ├── GameRecord.scala       # Abgeschlossene Partie (PGN, Züge, Ergebnis)
+│       │   ├── GameRepository.scala   # Repository-Trait für Partie-Archiv
+│       │   ├── InMemoryGameRepository.scala
+│       │   ├── TestPositions.scala    # Vordefinierte Teststellungen
+│       │   ├── fen/                   # FEN-Parser-Strategien (Regex, Combinator, Fast)
+│       │   ├── pgn/                   # PGN-Parser-Strategien (Regex, Combinator, Fast)
+│       │   └── api/
+│       │       ├── ModelRoutes.scala  # REST-Endpoints (Port 8082)
+│       │       └── ModelServer.scala  # Http4s-Server (IOApp)
+│       └── util/
+│           ├── Observable.scala       # Observer-Pattern (Trait)
+│           └── Observer.scala         # Observer-Interface
+├── controller/                        # Controller-Modul (hängt von model ab)
+│   └── src/main/scala/chess/
+│       ├── Chess.scala                # Entry Point (@main aluChess)
+│       ├── controller/
+│       │   ├── Controller.scala       # Use-Case-Koordination, Observable
+│       │   ├── ControllerInterface.scala
+│       │   └── api/
+│       │       ├── ControllerRoutes.scala  # REST-Endpoints (Port 8081)
+│       │       └── ControllerServer.scala  # Http4s-Server (IOApp)
+│       └── aview/
+│           ├── TUI.scala              # Text User Interface (Observer)
+│           └── gui/                   # Swing-GUI im Lichess-Stil
+│               ├── SwingGUI.scala
+│               ├── BoardPanel.scala
+│               ├── SidePanel.scala
+│               ├── NavBar.scala
+│               ├── HistoryPanel.scala
+│               ├── HistoryListPanel.scala
+│               ├── ClockPanel.scala
+│               ├── StartPanel.scala
+│               └── PromotionDialog.scala
+└── docs/                              # Dokumentation
+```
+
+### Modul-Abhängigkeiten
+
+```
+controller ──dependsOn──▶ model
+```
+
+Das Model-Modul hat **keine** Abhängigkeit zum Controller. Diese Trennung wird auf Build-Ebene erzwungen.
 
 ---
 
 ## Architektur
 
-Das Projekt folgt dem **MVC-Pattern** mit **Observer** für lose Kopplung:
+Das Projekt folgt dem **MVC-Pattern** mit **Observer** für lose Kopplung und ist als **sbt Multi-Module Build** organisiert (Vorbereitung für Microservice-Migration mit Docker):
 
-- **Model** – Immutable Domain-Objekte (`Board`, `Piece`, `Game`, `Move`, `Position`, `MoveValidator`, …). Kein `var`, kein `null`, keine Abhängigkeiten zu View oder Persistenz. Fehlerbehandlung über `Either[ChessError, _]`.
-- **Controller** – Koordiniert Use Cases (Zug ausführen, FEN laden, Aufgeben, Uhr, Replay). Implementiert `Observable` und hält den Spielzustand als `Vector[Game]` für History-Navigation.
-- **View (aview)** – Swing-GUI und TUI als `Observer`. Beide reagieren auf dieselben Controller-Events.
-- **Util** – Observer/Observable-Pattern als Infrastruktur für MVC.
+- **Model-Modul** (`model/`) – Immutable Domain-Objekte (`Board`, `Piece`, `Game`, `Move`, `Position`, `MoveValidator`, …). Kein `var`, kein `null`, keine Abhängigkeiten zu View oder Controller. Fehlerbehandlung über `Either[ChessError, _]`. Eigener REST-Service via Http4s (Port 8082).
+- **Controller-Modul** (`controller/`) – Koordiniert Use Cases (Zug ausführen, FEN laden, Aufgeben, Uhr, Replay). Implementiert `Observable` und hält den Spielzustand. Abhängig vom Model-Modul. Eigener REST-Service via Http4s (Port 8081).
+- **View (aview)** – Swing-GUI und TUI als `Observer` im Controller-Modul. Beide reagieren auf dieselben Controller-Events.
+- **REST APIs** – Beide Module exponieren Http4s-Endpoints. Der Controller-Service kommuniziert mit dem Model-Service per HTTP (Microservice-fähig).
+
+### REST API Endpoints
+
+| Service | Endpoint | Beschreibung |
+|---------|----------|-------------|
+| Model (8082) | `GET /api/model/new-game` | Initiales Spielfeld |
+| Model (8082) | `POST /api/model/validate-move` | Zug validieren |
+| Model (8082) | `POST /api/model/legal-moves` | Legale Züge für Position |
+| Controller (8081) | `GET /api/controller/state` | Spielzustand |
+| Controller (8081) | `POST /api/controller/move` | Zug ausführen |
+| Controller (8081) | `POST /api/controller/new-game` | Neues Spiel |
+| Controller (8081) | `GET /api/controller/events` | SSE Live-Updates |
+| Controller (8081) | … | +12 weitere Endpoints |
 
 Detaillierte ADRs: [`docs/architecture-decisions.md`](docs/architecture-decisions.md)
 
@@ -140,6 +180,8 @@ Detaillierte ADRs: [`docs/architecture-decisions.md`](docs/architecture-decision
 
 - [`docs/ai-context.md`](docs/ai-context.md) – Projekt-Memory für KI-gestützte Entwicklung
 - [`docs/architecture-decisions.md`](docs/architecture-decisions.md) – Architekturentscheidungen im ADR-Format
+- [`docs/microservice-migration-plan.md`](docs/microservice-migration-plan.md) – Migrationsplan Monolith → Microservices (Docker)
+- [`docs/web-ui-api-spec.md`](docs/web-ui-api-spec.md) – Web UI & REST API Spezifikation
 - [`docs/presentation-notes.md`](docs/presentation-notes.md) – Präsentationsnotizen pro Woche
 - [`docs/chess-rules-todo.md`](docs/chess-rules-todo.md) – Schachregeln-Roadmap (alle Stufen abgeschlossen)
 - [`docs/agent-prompts.md`](docs/agent-prompts.md) – Copy/Paste-Prompts für spezialisierte KI-Rollen
