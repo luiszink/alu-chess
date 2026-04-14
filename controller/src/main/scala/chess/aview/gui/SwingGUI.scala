@@ -28,8 +28,9 @@ class SwingGUI(controller: ControllerInterface) extends Frame with Observer:
   private val clockPanel   = ClockPanel(controller)
   private val sidePanel = SidePanel(
     controller,
-    onNewGame = () => showGameView(None),
-    onQuit = () => { clockTimer.stop(); dispose(); controller.quit() }
+    onNewGame  = () => showGameView(None),
+    onQuit     = () => { clockTimer.stop(); dispose(); controller.quit() },
+    onAIEnabled = () => boardPanel.triggerAiIfItsTurn()
   )
 
   // Clock tick timer (100ms interval for smooth display)
@@ -165,6 +166,8 @@ class SwingGUI(controller: ControllerInterface) extends Frame with Observer:
     sidePanel.refresh()
     boardPanel.refresh()
     repaint()
+    // If AI plays White it must move first on a fresh game
+    boardPanel.triggerAiIfItsTurn()
 
   private def showHistoryView(): Unit =
     if controller.isInReplay then controller.exitReplay()

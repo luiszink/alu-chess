@@ -2,6 +2,7 @@ package chess.aview.gui
 
 import chess.controller.ControllerInterface
 import chess.model.{Board, Color, Move, Piece, Position, GameStatus}
+import chess.model.ai.{AIMode, ChessAI}
 
 import scala.swing.*
 import scala.swing.event.*
@@ -12,6 +13,8 @@ class BoardPanel(controller: ControllerInterface, squareSize: Int = 75) extends 
 
   private var selectedSquare: Option[Position] = None
   private var legalTargets: Set[Position] = Set.empty
+  // True while the AI search thread is running — blocks human clicks
+  private var aiThinking = false
 
   preferredSize = new Dimension(squareSize * 8 + 40, squareSize * 8 + 40)
 
@@ -178,7 +181,12 @@ class BoardPanel(controller: ControllerInterface, squareSize: Int = 75) extends 
       case GameStatus.Checkmate | GameStatus.Stalemate | GameStatus.Resigned | GameStatus.Draw | GameStatus.TimeOut => true
       case _ => false
 
-    if isGameOver || !controller.isAtLatest || controller.isInReplay then return
+    // Block interaction when game is over, AI is thinking, or it is the AI's turn
+    val isAiTurn = controller.aiMode match
+      case AIMode.PlayingAs(color) => game.currentPlayer == color
+      case AIMode.Disabled         => false
+
+    if isGameOver || aiThinking || isAiTurn || !controller.isAtLatest || controller.isInReplay then return
 
     selectedSquare match
       case Some(from) if legalTargets.contains(pos) =>
@@ -198,6 +206,8 @@ class BoardPanel(controller: ControllerInterface, squareSize: Int = 75) extends 
         selectedSquare = None
         legalTargets = Set.empty
         repaint()
+        // Let the AI respond on a background thread (keeps EDT free)
+        scheduleAiIfItsTurn()
 
       case Some(from) if from == pos =>
         // Deselect
@@ -226,3 +236,23 @@ class BoardPanel(controller: ControllerInterface, squareSize: Int = 75) extends 
     selectedSquare = None
     legalTargets = Set.empty
     repaint()
+
+  /** Start an AI move on a background thread if the AI mode is active and it is the AI's turn.
+    * Safe to call from the EDT — the search runs off-thread, the resulting move is applied on the EDT. */
+  def triggerAiIfItsTurn(): Unit = scheduleAiIfItsTurn()
+
+  private def scheduleAiIfItsTurn(): Unit =
+    if aiThinking then return
+    controller.aiMode match
+      case AIMode.PlayingAs(color)
+        if !controller.game.status.isTerminal && controller.game.currentPlayer == color =>
+        aiThinking = true
+        val snapshot = controller.game // capture state for off-EDT search
+        new Thread(() => {
+          val bestMove = ChessAI.selectMove(snapshot)
+          javax.swing.SwingUtilities.invokeLater(() => {
+            aiThinking = false
+            bestMove.foreach(controller.doMove)
+          })
+        }, "chess-ai-search").start()
+      case _ => ()

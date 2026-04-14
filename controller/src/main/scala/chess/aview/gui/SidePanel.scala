@@ -1,7 +1,8 @@
 package chess.aview.gui
 
 import chess.controller.ControllerInterface
-import chess.model.{GameStatus, TestPositions, Fen, Move, ChessError, Pgn}
+import chess.model.{GameStatus, TestPositions, Fen, Move, ChessError, Pgn, Color}
+import chess.model.ai.AIMode
 
 import scala.swing.*
 import scala.swing.event.*
@@ -11,7 +12,12 @@ import javax.swing.{JOptionPane, BorderFactory, DefaultListCellRenderer, JTabbed
 import javax.swing.border.EmptyBorder
 
 /** Side panel showing game status, move info, and control buttons. */
-class SidePanel(controller: ControllerInterface, onNewGame: () => Unit, onQuit: () => Unit) extends BoxPanel(Orientation.Vertical):
+class SidePanel(
+  controller: ControllerInterface,
+  onNewGame: () => Unit,
+  onQuit: () => Unit,
+  onAIEnabled: () => Unit = () => ()
+) extends BoxPanel(Orientation.Vertical):
 
   private val panelWidth = 300
   private val contentWidth = 268
@@ -464,6 +470,43 @@ class SidePanel(controller: ControllerInterface, onNewGame: () => Unit, onQuit: 
   def openToolsDialog(): Unit =
     toolsDialog.setVisible(true)
 
+  // --- AI mode section ---
+  private val accentBlue   = new AwtColor(100, 160, 220)
+  private val accentOrange = new AwtColor(220, 140, 60)
+
+  private val aiModeLabel = new Label("KI: Aus"):
+    font = new Font("SansSerif", Font.BOLD, 12)
+    foreground = subtitleFg
+    horizontalAlignment = Alignment.Center
+  centerAlign(aiModeLabel)
+
+  private val btnAiBlack = styledButton("KI: Schwarz", () => {
+    controller.setAIMode(AIMode.PlayingAs(Color.Black))
+    aiModeLabel.text = "KI spielt Schwarz  ●"
+    aiModeLabel.foreground = accentBlue
+    onAIEnabled()
+  })
+  private val btnAiWhite = styledButton("KI: Weiß", () => {
+    controller.setAIMode(AIMode.PlayingAs(Color.White))
+    aiModeLabel.text = "KI spielt Weiß  ●"
+    aiModeLabel.foreground = accentOrange
+    onAIEnabled()
+  })
+  private val btnAiOff = styledButton("KI: Aus", () => {
+    controller.setAIMode(AIMode.Disabled)
+    aiModeLabel.text = "KI: Aus"
+    aiModeLabel.foreground = subtitleFg
+  })
+
+  private val aiRow1 = new Panel:
+    background = bgMain
+    peer.setLayout(new java.awt.GridLayout(1, 2, 4, 0))
+    peer.add(btnAiBlack.peer)
+    peer.add(btnAiWhite.peer)
+  aiRow1.preferredSize = new Dimension(contentWidth, 34)
+  aiRow1.maximumSize = new Dimension(Short.MaxValue, 34)
+  centerAlign(aiRow1)
+
   // --- Action row: compact buttons (Neues Spiel | Beenden) ---
   private val actionRow = new Panel:
     background = new AwtColor(38, 36, 33)
@@ -482,6 +525,14 @@ class SidePanel(controller: ControllerInterface, onNewGame: () => Unit, onQuit: 
   contents += Swing.VStrut(2)
   contents += moveLabel
   contents += Swing.VStrut(sectionGap)
+  contents += styledSeparator()
+  contents += Swing.VStrut(smallGap)
+  contents += aiModeLabel
+  contents += Swing.VStrut(4)
+  contents += aiRow1
+  contents += Swing.VStrut(4)
+  contents += btnAiOff
+  contents += Swing.VStrut(smallGap)
   contents += styledSeparator()
   contents += Swing.VStrut(smallGap)
   contents += actionRow
@@ -524,5 +575,17 @@ class SidePanel(controller: ControllerInterface, onNewGame: () => Unit, onQuit: 
 
     if !fenInputField.hasFocus then
       fenInputField.text = Fen.toFen(game)
+
+    // Sync AI mode label
+    controller.aiMode match
+      case AIMode.Disabled =>
+        aiModeLabel.text = "KI: Aus"
+        aiModeLabel.foreground = subtitleFg
+      case AIMode.PlayingAs(Color.Black) =>
+        aiModeLabel.text = "KI spielt Schwarz  ●"
+        aiModeLabel.foreground = accentBlue
+      case AIMode.PlayingAs(Color.White) =>
+        aiModeLabel.text = "KI spielt Weiß  ●"
+        aiModeLabel.foreground = accentOrange
 
     repaint()
