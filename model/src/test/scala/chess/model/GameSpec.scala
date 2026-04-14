@@ -375,6 +375,45 @@ class GameSpec extends AnyWordSpec with Matchers {
       result shouldBe defined
       result.get.halfMoveClock shouldBe 11
     }
+
+    "detect draw by threefold repetition" in {
+      val result = for
+        g1 <- Game.newGame.applyMove(Move(Position(0, 6), Position(2, 5))) // Ng1-f3
+        g2 <- g1.applyMove(Move(Position(7, 6), Position(5, 5)))            // Ng8-f6
+        g3 <- g2.applyMove(Move(Position(2, 5), Position(0, 6)))            // Nf3-g1
+        g4 <- g3.applyMove(Move(Position(5, 5), Position(7, 6)))            // Nf6-g8 (2nd occurrence)
+        g5 <- g4.applyMove(Move(Position(0, 6), Position(2, 5)))            // Ng1-f3
+        g6 <- g5.applyMove(Move(Position(7, 6), Position(5, 5)))            // Ng8-f6
+        g7 <- g6.applyMove(Move(Position(2, 5), Position(0, 6)))            // Nf3-g1
+        g8 <- g7.applyMove(Move(Position(5, 5), Position(7, 6)))            // Nf6-g8 (3rd occurrence)
+      yield g8
+
+      result shouldBe defined
+      result.get.status shouldBe GameStatus.Draw
+    }
+
+    "detect draw by threefold repetition for rook shuffling" in {
+      val board = Board.empty
+        .put(Position(1, 4), Piece.King(Color.White))
+        .put(Position(7, 4), Piece.King(Color.Black))
+        .put(Position(0, 6), Piece.Rook(Color.White))
+        .put(Position(0, 1), Piece.Rook(Color.Black))
+      val game = Game(board, Color.White, GameStatus.Playing)
+
+      val result = for
+        g1 <- game.applyMove(Move(Position(0, 6), Position(0, 7))) // g1-h1
+        g2 <- g1.applyMove(Move(Position(0, 1), Position(0, 0)))   // b1-a1
+        g3 <- g2.applyMove(Move(Position(0, 7), Position(0, 6)))   // h1-g1
+        g4 <- g3.applyMove(Move(Position(0, 0), Position(0, 1)))   // a1-b1 (2nd occurrence)
+        g5 <- g4.applyMove(Move(Position(0, 6), Position(0, 7)))   // g1-h1
+        g6 <- g5.applyMove(Move(Position(0, 1), Position(0, 0)))   // b1-a1
+        g7 <- g6.applyMove(Move(Position(0, 7), Position(0, 6)))   // h1-g1
+        g8 <- g7.applyMove(Move(Position(0, 0), Position(0, 1)))   // a1-b1 (3rd occurrence)
+      yield g8
+
+      result shouldBe defined
+      result.get.status shouldBe GameStatus.Draw
+    }
   }
 
   // ---------- applyMoveE ----------

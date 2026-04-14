@@ -74,5 +74,9 @@ class ChessAISpec extends AnyWordSpec with Matchers {
         case AIMode.PlayingAs(Color.Black) => succeed
         case _ => fail("Expected PlayingAs(Black)")
     }
+
+    "support PlayingBoth" in {
+      AIMode.PlayingBoth shouldBe a[AIMode]
+    }
   }
 }

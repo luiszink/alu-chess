@@ -1,6 +1,7 @@
 package chess.controller
 
 import chess.model.{Game, Color, Board, Move, Position, GameStatus, ChessError, Piece, TimeControl, ChessClock}
+import chess.model.ai.AIMode
 import chess.util.Observer
 import org.scalatest.wordspec.AnyWordSpec
 import org.scalatest.matchers.should.Matchers
@@ -139,6 +140,28 @@ class ControllerSpec extends AnyWordSpec with Matchers {
       controller.add(observer)
       controller.doMove(Move(Position(1, 4), Position(3, 4)))
       notified shouldBe true
+    }
+
+    "allow AI moves for both colors in AI-vs-AI mode" in {
+      val controller = Controller()
+      controller.setAIMode(AIMode.PlayingBoth)
+
+      controller.doAiMove() shouldBe true
+      val afterWhite = controller.game.currentPlayer
+      afterWhite shouldBe Color.Black
+
+      controller.doAiMove() shouldBe true
+      controller.game.currentPlayer shouldBe Color.White
+    }
+
+    "refuse AI-vs-AI move attempts in terminal positions" in {
+      val controller = Controller()
+      controller.loadFen("7k/6Q1/6K1/8/8/8/8/8 b - - 0 1") shouldBe true
+      controller.game.status shouldBe GameStatus.Checkmate
+      controller.setAIMode(AIMode.PlayingBoth)
+
+      controller.doAiMove() shouldBe false
+      controller.doAiMoveResult() shouldBe Left(ChessError.GameAlreadyOver(GameStatus.Checkmate))
     }
   }
 

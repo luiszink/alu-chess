@@ -228,24 +228,25 @@ class Controller(val repository: GameRepository = InMemoryGameRepository()) exte
 
   override def aiMode: AIMode = _aiMode
 
+  private def aiControlsCurrentPlayer(mode: AIMode, game: Game): Boolean =
+    mode match
+      case AIMode.Disabled         => false
+      case AIMode.PlayingAs(color) => game.currentPlayer == color
+      case AIMode.PlayingBoth      => true
+
   override def doAiMove(): Boolean =
-    _aiMode match
-      case AIMode.Disabled => false
-      case AIMode.PlayingAs(color) =>
-        if latestGame.currentPlayer != color || latestGame.status.isTerminal then false
-        else ChessAI.selectMove(latestGame).exists(doMove)
+    if latestGame.status.isTerminal then false
+    else if !aiControlsCurrentPlayer(_aiMode, latestGame) then false
+    else ChessAI.selectMove(latestGame).exists(doMove)
 
   override def doAiMoveResult(): Either[ChessError, Game] =
-    _aiMode match
-      case AIMode.Disabled => Left(ChessError.GameAlreadyOver(latestGame.status))
-      case AIMode.PlayingAs(color) =>
-        if latestGame.status.isTerminal then
-          Left(ChessError.GameAlreadyOver(latestGame.status))
-        else if latestGame.currentPlayer != color then
-          Left(ChessError.GameAlreadyOver(latestGame.status))
-        else ChessAI.selectMove(latestGame) match
-          case Some(move) => doMoveResult(move)
-          case None       => Left(ChessError.GameAlreadyOver(latestGame.status))
+    if latestGame.status.isTerminal then
+      Left(ChessError.GameAlreadyOver(latestGame.status))
+    else if !aiControlsCurrentPlayer(_aiMode, latestGame) then
+      Left(ChessError.GameAlreadyOver(latestGame.status))
+    else ChessAI.selectMove(latestGame) match
+      case Some(move) => doMoveResult(move)
+      case None       => Left(ChessError.GameAlreadyOver(latestGame.status))
 
   override def exportCurrentGameAsJson: String =
     val record = GameRecord.create(_gameStates, _currentTimeControl)

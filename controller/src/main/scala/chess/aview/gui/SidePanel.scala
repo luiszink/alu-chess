@@ -473,6 +473,7 @@ class SidePanel(
   // --- AI mode section ---
   private val accentBlue   = new AwtColor(100, 160, 220)
   private val accentOrange = new AwtColor(220, 140, 60)
+  private val accentBoth   = new AwtColor(128, 190, 130)
 
   private val aiModeLabel = new Label("KI: Aus"):
     font = new Font("SansSerif", Font.BOLD, 12)
@@ -492,6 +493,12 @@ class SidePanel(
     aiModeLabel.foreground = accentOrange
     onAIEnabled()
   })
+  private val btnAiBoth = styledButton("KI: Beide", () => {
+    controller.setAIMode(AIMode.PlayingBoth)
+    aiModeLabel.text = "KI gegen KI  ●"
+    aiModeLabel.foreground = accentBoth
+    onAIEnabled()
+  })
   private val btnAiOff = styledButton("KI: Aus", () => {
     controller.setAIMode(AIMode.Disabled)
     aiModeLabel.text = "KI: Aus"
@@ -500,9 +507,10 @@ class SidePanel(
 
   private val aiRow1 = new Panel:
     background = bgMain
-    peer.setLayout(new java.awt.GridLayout(1, 2, 4, 0))
+    peer.setLayout(new java.awt.GridLayout(1, 3, 4, 0))
     peer.add(btnAiBlack.peer)
     peer.add(btnAiWhite.peer)
+    peer.add(btnAiBoth.peer)
   aiRow1.preferredSize = new Dimension(contentWidth, 34)
   aiRow1.maximumSize = new Dimension(Short.MaxValue, 34)
   centerAlign(aiRow1)
@@ -587,5 +595,8 @@ class SidePanel(
       case AIMode.PlayingAs(Color.White) =>
         aiModeLabel.text = "KI spielt Weiß  ●"
         aiModeLabel.foreground = accentOrange
+      case AIMode.PlayingBoth =>
+        aiModeLabel.text = "KI gegen KI  ●"
+        aiModeLabel.foreground = accentBoth
 
     repaint()

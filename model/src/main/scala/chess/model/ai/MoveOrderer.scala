@@ -17,6 +17,7 @@ object MoveOrderer:
   private val MvvLvaBase    = 10_000_000
   private val PromotionBase =  9_000_000
   private val KillerBonus   =  8_000_000
+  private val BacktrackPenalty = 150_000
 
   /** Sort moves in descending priority (highest-score first).
     * If `ttMove` is supplied it is placed first unconditionally. */
@@ -40,17 +41,21 @@ object MoveOrderer:
   ): Int =
     val board    = game.board
     val captured = capturedPiece(move, game)
+    val backtrackPenalty = if isImmediateBacktrack(move, game) then BacktrackPenalty else 0
 
     if ttMove.contains(move) then
       TTBase
     else if captured.isDefined then
-      MvvLvaBase + mvvLva(move, board, captured)
+      MvvLvaBase + mvvLva(move, board, captured) - backtrackPenalty
     else if move.promotion.isDefined then
-      PromotionBase
+      PromotionBase - backtrackPenalty
     else if ply < killers.length && isKiller(move, killers(ply)) then
-      KillerBonus
+      KillerBonus - backtrackPenalty
     else
-      historyScore(move, board, history)
+      historyScore(move, board, history) - backtrackPenalty
+
+  private def isImmediateBacktrack(move: Move, game: Game): Boolean =
+    game.lastMove.exists(last => move.from == last.to && move.to == last.from)
 
   /** The piece captured by this move, if any (including en passant). */
   def capturedPiece(move: Move, game: Game): Option[Piece] =

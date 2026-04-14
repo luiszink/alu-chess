@@ -8,3 +8,5 @@ enum AIMode:
   case Disabled
   /** The AI plays as the given color; the other color is controlled by the human. */
   case PlayingAs(color: Color)
+  /** Both sides are controlled by the AI. */
+  case PlayingBoth

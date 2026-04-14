@@ -15,6 +15,7 @@ class BoardPanel(controller: ControllerInterface, squareSize: Int = 75) extends 
   private var legalTargets: Set[Position] = Set.empty
   // True while the AI search thread is running — blocks human clicks
   private var aiThinking = false
+  private val AiVsAiDelayMs = 500
 
   preferredSize = new Dimension(squareSize * 8 + 40, squareSize * 8 + 40)
 
@@ -184,6 +185,7 @@ class BoardPanel(controller: ControllerInterface, squareSize: Int = 75) extends 
     // Block interaction when game is over, AI is thinking, or it is the AI's turn
     val isAiTurn = controller.aiMode match
       case AIMode.PlayingAs(color) => game.currentPlayer == color
+      case AIMode.PlayingBoth      => true
       case AIMode.Disabled         => false
 
     if isGameOver || aiThinking || isAiTurn || !controller.isAtLatest || controller.isInReplay then return
@@ -243,16 +245,36 @@ class BoardPanel(controller: ControllerInterface, squareSize: Int = 75) extends 
 
   private def scheduleAiIfItsTurn(): Unit =
     if aiThinking then return
+    val snapshot = controller.game
+    val shouldThink = controller.aiMode match
+      case AIMode.PlayingAs(color) => !snapshot.status.isTerminal && snapshot.currentPlayer == color
+      case AIMode.PlayingBoth      => !snapshot.status.isTerminal
+      case AIMode.Disabled         => false
+    if !shouldThink then return
+
+    aiThinking = true
+    new Thread(() => {
+      val bestMove = ChessAI.selectMove(snapshot)
+      javax.swing.SwingUtilities.invokeLater(() => {
+        aiThinking = false
+        val canApplyResult =
+          controller.game == snapshot &&
+          !controller.game.status.isTerminal &&
+          (controller.aiMode match
+            case AIMode.PlayingAs(color) => controller.game.currentPlayer == color
+            case AIMode.PlayingBoth      => true
+            case AIMode.Disabled         => false)
+        if canApplyResult then
+          bestMove.foreach { move =>
+            if controller.doMove(move) then scheduleAiVsAiContinuation()
+          }
+      })
+    }, "chess-ai-search").start()
+
+  private def scheduleAiVsAiContinuation(): Unit =
     controller.aiMode match
-      case AIMode.PlayingAs(color)
-        if !controller.game.status.isTerminal && controller.game.currentPlayer == color =>
-        aiThinking = true
-        val snapshot = controller.game // capture state for off-EDT search
-        new Thread(() => {
-          val bestMove = ChessAI.selectMove(snapshot)
-          javax.swing.SwingUtilities.invokeLater(() => {
-            aiThinking = false
-            bestMove.foreach(controller.doMove)
-          })
-        }, "chess-ai-search").start()
+      case AIMode.PlayingBoth if !controller.game.status.isTerminal =>
+        val timer = new javax.swing.Timer(AiVsAiDelayMs, _ => scheduleAiIfItsTurn())
+        timer.setRepeats(false)
+        timer.start()
       case _ => ()

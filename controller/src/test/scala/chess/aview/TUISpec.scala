@@ -2,6 +2,7 @@ package chess.aview
 
 import chess.controller.{Controller, ControllerInterface}
 import chess.model.{Board, Color, GameStatus, Piece, Position}
+import chess.model.ai.AIMode
 import chess.util.Observer
 import org.scalatest.wordspec.AnyWordSpec
 import org.scalatest.matchers.should.Matchers
@@ -32,6 +33,21 @@ class TUISpec extends AnyWordSpec with Matchers {
       val controller = Controller()
       val tui = TUI(controller)
       tui.processInput("") shouldBe true
+    }
+
+    "process 'ai both' and enable AI-vs-AI mode" in {
+      val controller = Controller()
+      val tui = TUI(controller)
+      tui.processInput("ai both") shouldBe true
+      controller.aiMode shouldBe AIMode.PlayingBoth
+    }
+
+    "process 'ai off' after ai both and disable AI mode" in {
+      val controller = Controller()
+      val tui = TUI(controller)
+      tui.processInput("ai both") shouldBe true
+      tui.processInput("ai off") shouldBe true
+      controller.aiMode shouldBe AIMode.Disabled
     }
 
     "process a valid move like 'e2 e4'" in {
