@@ -13,31 +13,37 @@ import chess.model.{Game, Board, Move, Piece, Position}
   *   6. All other quiet moves   (history score = 0) */
 object MoveOrderer:
 
+  private val TTBase        = 20_000_000
   private val MvvLvaBase    = 10_000_000
   private val PromotionBase =  9_000_000
   private val KillerBonus   =  8_000_000
 
-  /** Sort moves in descending priority (highest-score first). */
+  /** Sort moves in descending priority (highest-score first).
+    * If `ttMove` is supplied it is placed first unconditionally. */
   def orderMoves(
     moves: List[Move],
     game: Game,
     killers: Array[Array[Option[Move]]],
     history: Array[Int],
-    ply: Int
+    ply: Int,
+    ttMove: Option[Move] = None
   ): List[Move] =
-    moves.sortBy(-moveScore(_, game, killers, history, ply))
+    moves.sortBy(-moveScore(_, game, killers, history, ply, ttMove))
 
   private def moveScore(
     move: Move,
     game: Game,
     killers: Array[Array[Option[Move]]],
     history: Array[Int],
-    ply: Int
+    ply: Int,
+    ttMove: Option[Move]
   ): Int =
     val board    = game.board
     val captured = capturedPiece(move, game)
 
-    if captured.isDefined then
+    if ttMove.contains(move) then
+      TTBase
+    else if captured.isDefined then
       MvvLvaBase + mvvLva(move, board, captured)
     else if move.promotion.isDefined then
       PromotionBase

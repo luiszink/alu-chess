@@ -4,56 +4,57 @@ import chess.model.{Game, Move, Board, Color, Piece, GameStatus, MoveValidator}
 
 /** Minimax search with Alpha-Beta pruning, quiescence search, and iterative deepening.
   *
-  * Public API is pure: `bestMove(game, timeLimitMs, maxDepth): Option[Move]`
-  * Internally uses locally-scoped mutable state (killer/history tables) for performance. */
+  * Search enhancements:
+  *   - Transposition Table (Zobrist-keyed) with bound-aware cutoffs and TT-move ordering
+  *   - Null-Move Pruning (R=2, with non-pawn-material and in-check guards)
+  *   - Quiescence Search extended with check evasions and checking moves
+  *
+  * Public API is pure: `bestMove(game, timeLimitMs, maxDepth): Option[Move]`.
+  * Locally-scoped mutable state (killer/history tables, TT) is confined to a single call. */
 object AlphaBeta:
 
   val CheckmateScore: Int = 100_000
   private val MaxKillerPly: Int = 64
+  private val NullMoveR: Int    = 2
 
-  /** Find the best move for the current player using iterative deepening alpha-beta.
-    *
-    * @param game        Current game state (must not be terminal)
-    * @param timeLimitMs Time budget in milliseconds (default 3 seconds)
-    * @param maxDepth    Hard depth cap (default 6; increase for stronger play)
-    * @return The best move found within the time limit, or None if the position is terminal */
+  /** Find the best move for the current player using iterative deepening alpha-beta. */
   def bestMove(game: Game, timeLimitMs: Long = 3000L, maxDepth: Int = 6): Option[Move] =
     if game.status.isTerminal then return None
     val rootMoves = MoveValidator.legalMoves(game.board, game.currentPlayer, game.movedPieces, game.lastMove)
     if rootMoves.isEmpty then return None
 
     val deadline = System.nanoTime() + timeLimitMs * 1_000_000L
-    // killers(ply)(0|1) — up to 2 killer moves per ply
     val killers  = Array.fill(MaxKillerPly)(Array.fill[Option[Move]](2)(None))
-    // history(pieceTypeIndex * 64 + row * 8 + col) — quiet move bonuses
     val history  = Array.fill(6 * 64)(0)
+    val tt       = TranspositionTable()
 
     var bestSoFar: Option[Move] = rootMoves.headOption
     var depth = 1
     while depth <= maxDepth && System.nanoTime() < deadline do
-      val (score, candidate) = rootSearch(game, depth, killers, history, deadline)
-      // Only update if we completed the depth within time (candidate is defined means at least one move was searched)
+      val (score, candidate) = rootSearch(game, depth, killers, history, tt, deadline)
       if candidate.isDefined then
         bestSoFar = candidate
-      // Stop early on forced mate
       if score >= CheckmateScore - MaxKillerPly then
         return bestSoFar
       depth += 1
 
     bestSoFar
 
-  // --- Root search: one full depth, returns (bestScore, bestMove) ---
+  // --- Root search ---
 
   private def rootSearch(
     game: Game,
     depth: Int,
     killers: Array[Array[Option[Move]]],
     history: Array[Int],
+    tt: TranspositionTable,
     deadline: Long
   ): (Int, Option[Move]) =
-    val moves = MoveOrderer.orderMoves(
+    val key    = Zobrist.hash(game)
+    val ttMove = tt.probe(key).flatMap(_.move)
+    val moves  = MoveOrderer.orderMoves(
       MoveValidator.legalMoves(game.board, game.currentPlayer, game.movedPieces, game.lastMove),
-      game, killers, history, 0
+      game, killers, history, 0, ttMove
     )
 
     var alpha    = Int.MinValue / 2
@@ -66,11 +67,14 @@ object AlphaBeta:
       game.applyMove(move) match
         case None => ()
         case Some(next) =>
-          val score = -negamax(next, depth - 1, -beta, -alpha, 1, deadline, killers, history)
+          val score = -negamax(next, depth - 1, -beta, -alpha, 1, deadline, killers, history, tt)
           if score > alpha then
             alpha    = score
             bestMove = Some(move)
 
+    bestMove.foreach { m =>
+      tt.store(key, depth, alpha, TranspositionTable.Bound.Exact, Some(m))
+    }
     (alpha, bestMove)
 
   // --- Negamax with alpha-beta pruning ---
@@ -83,48 +87,81 @@ object AlphaBeta:
     ply: Int,
     deadline: Long,
     killers: Array[Array[Option[Move]]],
-    history: Array[Int]
+    history: Array[Int],
+    tt: TranspositionTable
   ): Int =
-    // Time check
     if System.nanoTime() > deadline then return 0
-
-    // Terminal position
     if game.status.isTerminal then return terminalScore(game, ply)
-
-    // Leaf node: drop into quiescence search
     if depth <= 0 then return quiescence(game, alpha, beta, ply, deadline)
+
+    // --- TT probe ---
+    val key      = Zobrist.hash(game)
+    val ttEntry  = tt.probe(key)
+    ttEntry match
+      case Some(e) if e.depth >= depth =>
+        e.bound match
+          case TranspositionTable.Bound.Exact                       => return e.score
+          case TranspositionTable.Bound.Lower if e.score >= beta    => return e.score
+          case TranspositionTable.Bound.Upper if e.score <= alpha   => return e.score
+          case _                                                    => ()
+      case _ => ()
+    val ttMove = ttEntry.flatMap(_.move)
+
+    val inCheck = MoveValidator.isInCheck(game.board, game.currentPlayer)
+
+    // --- Null-Move Pruning ---
+    if depth >= 3
+       && !inCheck
+       && beta < CheckmateScore - MaxKillerPly
+       && beta > -(CheckmateScore - MaxKillerPly)
+       && hasNonPawnMaterial(game.board, game.currentPlayer)
+    then
+      val nullGame = game.copy(
+        currentPlayer = game.currentPlayer.opposite,
+        lastMove      = None
+      )
+      val nullScore = -negamax(nullGame, depth - 1 - NullMoveR, -beta, -beta + 1, ply + 1, deadline, killers, history, tt)
+      if nullScore >= beta then return nullScore
 
     val moves = MoveOrderer.orderMoves(
       MoveValidator.legalMoves(game.board, game.currentPlayer, game.movedPieces, game.lastMove),
-      game, killers, history, ply
+      game, killers, history, ply, ttMove
     )
-
-    // No legal moves — terminal (should be caught by status, but guard anyway)
     if moves.isEmpty then return terminalScore(game, ply)
 
-    var currentAlpha = alpha
-    var bestScore    = Int.MinValue / 2
-    var cutoff       = false
-    val iter         = moves.iterator
+    var currentAlpha   = alpha
+    var bestScore      = Int.MinValue / 2
+    var bestMoveLocal: Option[Move] = None
+    var cutoff         = false
+    val iter           = moves.iterator
 
     while iter.hasNext && !cutoff && System.nanoTime() < deadline do
       val move = iter.next()
       game.applyMove(move) match
         case None => ()
         case Some(next) =>
-          val score = -negamax(next, depth - 1, -beta, -currentAlpha, ply + 1, deadline, killers, history)
-          if score > bestScore then bestScore = score
+          val score = -negamax(next, depth - 1, -beta, -currentAlpha, ply + 1, deadline, killers, history, tt)
+          if score > bestScore then
+            bestScore     = score
+            bestMoveLocal = Some(move)
           if score > currentAlpha then currentAlpha = score
           if currentAlpha >= beta then
-            // Beta cutoff: record killer and update history for quiet moves
             if !isCapture(move, game) then
               storeKiller(killers, ply, move)
               updateHistory(history, game.board, move, depth)
             cutoff = true
 
-    if bestScore == Int.MinValue / 2 then 0 else bestScore
+    if bestScore == Int.MinValue / 2 then return 0
 
-  // --- Quiescence search: only captures until quiet position ---
+    val bound =
+      if bestScore <= alpha then TranspositionTable.Bound.Upper
+      else if bestScore >= beta then TranspositionTable.Bound.Lower
+      else TranspositionTable.Bound.Exact
+    tt.store(key, depth, bestScore, bound, bestMoveLocal)
+
+    bestScore
+
+  // --- Quiescence search (captures + promotions + checks + check evasions) ---
 
   private def quiescence(
     game: Game,
@@ -135,18 +172,32 @@ object AlphaBeta:
   ): Int =
     if game.status.isTerminal then return terminalScore(game, ply)
 
-    // Stand-pat: current position score as lower bound
-    val standPat = perspectiveScore(Evaluator.evaluate(game.board), game.currentPlayer)
-    if standPat >= beta then return beta
+    val inCheck = MoveValidator.isInCheck(game.board, game.currentPlayer)
 
-    var currentAlpha = if standPat > alpha then standPat else alpha
-    var best         = standPat
+    var currentAlpha = alpha
+    var best         = Int.MinValue / 2
 
-    val captures = MoveValidator.legalMoves(game.board, game.currentPlayer, game.movedPieces, game.lastMove)
-      .filter(m => isCapture(m, game))
+    if !inCheck then
+      val standPat = perspectiveScore(Evaluator.evaluate(game.board), game.currentPlayer)
+      if standPat >= beta then return beta
+      best = standPat
+      if standPat > currentAlpha then currentAlpha = standPat
+
+    val legal = MoveValidator.legalMoves(game.board, game.currentPlayer, game.movedPieces, game.lastMove)
+
+    // When in check: all evasions. Otherwise: captures, promotions, checking moves.
+    val tactical =
+      if inCheck then legal
+      else legal.filter(m =>
+        isCapture(m, game) || m.promotion.isDefined || givesCheck(m, game)
+      )
+
+    if tactical.isEmpty && inCheck then
+      // No legal move while in check → mate
+      return terminalScore(game, ply)
 
     var cutoff = false
-    val iter   = captures.iterator
+    val iter   = tactical.iterator
     while iter.hasNext && !cutoff && System.nanoTime() < deadline do
       val move = iter.next()
       game.applyMove(move) match
@@ -155,15 +206,15 @@ object AlphaBeta:
           val score = -quiescence(next, -beta, -currentAlpha, ply + 1, deadline)
           if score > best then best = score
           if score > currentAlpha then currentAlpha = score
-          if currentAlpha >= beta then
-            cutoff = true
+          if currentAlpha >= beta then cutoff = true
 
-    best
+    if best == Int.MinValue / 2 then
+      // No tactical moves searched → return stand-pat (alpha) when quiet
+      if inCheck then terminalScore(game, ply) else alpha
+    else best
 
   // --- Helpers ---
 
-  /** Score for the current player in a terminal position.
-    * Prefers shorter mates by subtracting ply (faster mate = higher score). */
   private def terminalScore(game: Game, ply: Int): Int =
     game.status match
       case GameStatus.Checkmate                              => -(CheckmateScore - ply)
@@ -172,15 +223,34 @@ object AlphaBeta:
       case _                                                 =>
         perspectiveScore(Evaluator.evaluate(game.board), game.currentPlayer)
 
-  /** Convert White-perspective score to current player's perspective. */
   private def perspectiveScore(whiteScore: Int, currentPlayer: Color): Int =
     if currentPlayer == Color.White then whiteScore else -whiteScore
 
-  /** True if the move is a capture (including en passant). */
   private def isCapture(move: Move, game: Game): Boolean =
     game.board.cell(move.to).isDefined ||
       (game.board.cell(move.from).exists { case Piece.Pawn(_) => true; case _ => false }
         && move.from.col != move.to.col)
+
+  private def givesCheck(move: Move, game: Game): Boolean =
+    game.applyMove(move).exists(g =>
+      MoveValidator.isInCheck(g.board, g.currentPlayer)
+    )
+
+  /** True if `color` has any piece other than king or pawn (null-move safety). */
+  private def hasNonPawnMaterial(board: Board, color: Color): Boolean =
+    var r = 0
+    while r < 8 do
+      var c = 0
+      while c < 8 do
+        board.cell(r, c) match
+          case Some(p) if p.color == color =>
+            p match
+              case Piece.King(_) | Piece.Pawn(_) => ()
+              case _ => return true
+          case _ => ()
+        c += 1
+      r += 1
+    false
 
   private def storeKiller(killers: Array[Array[Option[Move]]], ply: Int, move: Move): Unit =
     if ply < killers.length then
@@ -191,5 +261,5 @@ object AlphaBeta:
     board.cell(move.from) match
       case Some(piece) =>
         val idx = MoveOrderer.pieceTypeIndex(piece) * 64 + move.to.row * 8 + move.to.col
-        history(idx) = (history(idx) + depth * depth).min(1_000_000) // cap to prevent overflow
+        history(idx) = (history(idx) + depth * depth).min(1_000_000)
       case None => ()
