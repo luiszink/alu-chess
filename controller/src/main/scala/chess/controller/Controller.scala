@@ -1,6 +1,7 @@
 package chess.controller
 
 import chess.model.{Game, Move, GameStatus, Fen, ChessError, ChessClock, TimeControl, MoveEntry, GameRecord, GameRepository, InMemoryGameRepository, GameJson}
+import chess.model.ai.{AIMode, ChessAI}
 import chess.util.{Observable, Observer}
 
 class Controller(val repository: GameRepository = InMemoryGameRepository()) extends ControllerInterface with Observable:
@@ -176,6 +177,7 @@ class Controller(val repository: GameRepository = InMemoryGameRepository()) exte
 
   // --- Auto-save finished games ---
 
+  private var _aiMode: AIMode = AIMode.Disabled
   private var _lastSavedStates: Option[Vector[Game]] = None
 
   private def autoSave(): Unit =
@@ -219,6 +221,31 @@ class Controller(val repository: GameRepository = InMemoryGameRepository()) exte
     _savedBrowseIdx = None
     _inReplay = false
     notifyObservers()
+
+  // --- AI mode ---
+
+  override def setAIMode(mode: AIMode): Unit = _aiMode = mode
+
+  override def aiMode: AIMode = _aiMode
+
+  override def doAiMove(): Boolean =
+    _aiMode match
+      case AIMode.Disabled => false
+      case AIMode.PlayingAs(color) =>
+        if latestGame.currentPlayer != color || latestGame.status.isTerminal then false
+        else ChessAI.selectMove(latestGame).exists(doMove)
+
+  override def doAiMoveResult(): Either[ChessError, Game] =
+    _aiMode match
+      case AIMode.Disabled => Left(ChessError.GameAlreadyOver(latestGame.status))
+      case AIMode.PlayingAs(color) =>
+        if latestGame.status.isTerminal then
+          Left(ChessError.GameAlreadyOver(latestGame.status))
+        else if latestGame.currentPlayer != color then
+          Left(ChessError.GameAlreadyOver(latestGame.status))
+        else ChessAI.selectMove(latestGame) match
+          case Some(move) => doMoveResult(move)
+          case None       => Left(ChessError.GameAlreadyOver(latestGame.status))
 
   override def exportCurrentGameAsJson: String =
     val record = GameRecord.create(_gameStates, _currentTimeControl)

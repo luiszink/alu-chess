@@ -1,6 +1,7 @@
 package chess.controller
 
 import chess.model.{Game, Move, ChessError, MoveEntry, ChessClock, TimeControl, GameRecord}
+import chess.model.ai.AIMode
 import chess.util.Observer
 
 trait ControllerInterface:
@@ -37,3 +38,8 @@ trait ControllerInterface:
   def exitReplay(): Unit
   def exportCurrentGameAsJson: String
   def importGameFromJson(json: String): Either[ChessError, Game]
+  // AI mode
+  def setAIMode(mode: AIMode): Unit = ()
+  def aiMode: AIMode = AIMode.Disabled
+  def doAiMove(): Boolean = false
+  def doAiMoveResult(): Either[ChessError, Game] = Left(ChessError.GameAlreadyOver(game.status))
