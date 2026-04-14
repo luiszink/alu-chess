@@ -66,9 +66,10 @@ object Zobrist:
       if !mp.contains(Position(7, 0)) && board.cell(7, 0).contains(Piece.Rook(Color.Black)) then
         key ^= castling(3)
 
-    // En-passant file (if last move was a pawn double-push)
+    // En-passant file only if the right is position-relevant (a capture is possible)
     game.lastMove match
-      case Some(m) if isDoublePawnPush(m, board) => key ^= epFile(m.to.col)
+      case Some(m) if isDoublePawnPush(m, board) && hasRelevantEnPassant(game, m) =>
+        key ^= epFile(m.to.col)
       case _                                     => ()
 
     key
@@ -77,3 +78,14 @@ object Zobrist:
     board.cell(m.to) match
       case Some(Piece.Pawn(_)) => math.abs(m.to.row - m.from.row) == 2
       case _                   => false
+
+  private def hasRelevantEnPassant(game: Game, m: Move): Boolean =
+    val board = game.board
+    val sideToMove = game.currentPlayer
+    val pawnRow = m.to.row
+    val file = m.to.col
+
+    def isCapturingPawnAt(col: Int): Boolean =
+      col >= 0 && col < 8 && board.cell(pawnRow, col).contains(Piece.Pawn(sideToMove))
+
+    isCapturingPawnAt(file - 1) || isCapturingPawnAt(file + 1)

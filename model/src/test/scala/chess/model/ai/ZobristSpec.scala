@@ -50,6 +50,18 @@ class ZobristSpec extends AnyWordSpec with Matchers {
       Zobrist.hash(pathA.get) shouldBe Zobrist.hash(pathB.get)
     }
 
+    "ignore en-passant history when no capture is available" in {
+      val withEp = loadFen("7k/8/8/4p3/4P3/8/8/K7 w - e6 0 1")
+      val noEp   = withEp.copy(lastMove = None)
+      Zobrist.hash(withEp) shouldBe Zobrist.hash(noEp)
+    }
+
+    "distinguish positions when en-passant capture is available" in {
+      val withEp = loadFen("7k/8/8/3Pp3/8/8/8/K7 w - e6 0 1")
+      val noEp   = withEp.copy(lastMove = None)
+      Zobrist.hash(withEp) should not equal Zobrist.hash(noEp)
+    }
+
     "differ when castling rights differ" in {
       val base      = Game.newGame
       // Simulate white king having moved (loses both castling rights) by putting it into movedPieces

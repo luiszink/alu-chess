@@ -16,6 +16,8 @@ object AlphaBeta:
   val CheckmateScore: Int = 100_000
   private val MaxKillerPly: Int = 64
   private val NullMoveR: Int    = 2
+  private val SoftDeadlineMarginMs: Long = 10L
+  private val MaxQuiescenceDepth: Int = 10
 
   /** Find the best move for the current player using iterative deepening alpha-beta. */
   def bestMove(game: Game, timeLimitMs: Long = 3000L, maxDepth: Int = 6): Option[Move] =
@@ -23,18 +25,31 @@ object AlphaBeta:
     val rootMoves = MoveValidator.legalMoves(game.board, game.currentPlayer, game.movedPieces, game.lastMove)
     if rootMoves.isEmpty then return None
 
-    val deadline = System.nanoTime() + timeLimitMs * 1_000_000L
+    // Always take a forced mate in one immediately.
+    rootMoves.find { move =>
+      game.applyMove(move).exists(_.status == GameStatus.Checkmate)
+    } match
+      case Some(m) => return Some(m)
+      case None    => ()
+
+    val now = System.nanoTime()
+    val hardDeadline = now + timeLimitMs * 1_000_000L
+    val softMarginNanos = math.min(SoftDeadlineMarginMs * 1_000_000L, (timeLimitMs.max(1L) * 1_000_000L) / 20L)
+    val deadline =
+      val candidate = hardDeadline - softMarginNanos
+      if candidate > now then candidate else hardDeadline
+
     val killers  = Array.fill(MaxKillerPly)(Array.fill[Option[Move]](2)(None))
     val history  = Array.fill(6 * 64)(0)
     val tt       = TranspositionTable()
 
     var bestSoFar: Option[Move] = rootMoves.headOption
     var depth = 1
-    while depth <= maxDepth && System.nanoTime() < deadline do
-      val (score, candidate) = rootSearch(game, depth, killers, history, tt, deadline)
-      if candidate.isDefined then
+    while depth <= maxDepth && hasTimeLeft(deadline) do
+      val (score, candidate, completed) = rootSearch(game, depth, killers, history, tt, deadline)
+      if completed && candidate.isDefined then
         bestSoFar = candidate
-      if score >= CheckmateScore - MaxKillerPly then
+      if completed && score >= CheckmateScore - MaxKillerPly then
         return bestSoFar
       depth += 1
 
@@ -49,7 +64,7 @@ object AlphaBeta:
     history: Array[Int],
     tt: TranspositionTable,
     deadline: Long
-  ): (Int, Option[Move]) =
+  ): (Int, Option[Move], Boolean) =
     val key    = Zobrist.hash(game)
     val ttMove = tt.probe(key).flatMap(_.move)
     val moves  = MoveOrderer.orderMoves(
@@ -62,7 +77,7 @@ object AlphaBeta:
     var bestMove: Option[Move] = None
     val iter     = moves.iterator
 
-    while iter.hasNext && System.nanoTime() < deadline do
+    while iter.hasNext && hasTimeLeft(deadline) do
       val move = iter.next()
       game.applyMove(move) match
         case None => ()
@@ -72,10 +87,12 @@ object AlphaBeta:
             alpha    = score
             bestMove = Some(move)
 
-    bestMove.foreach { m =>
-      tt.store(key, depth, alpha, TranspositionTable.Bound.Exact, Some(m))
-    }
-    (alpha, bestMove)
+    val completed = !iter.hasNext
+    if completed then
+      bestMove.foreach { m =>
+        tt.store(key, depth, alpha, TranspositionTable.Bound.Exact, Some(m))
+      }
+    (alpha, bestMove, completed)
 
   // --- Negamax with alpha-beta pruning ---
 
@@ -90,9 +107,9 @@ object AlphaBeta:
     history: Array[Int],
     tt: TranspositionTable
   ): Int =
-    if System.nanoTime() > deadline then return 0
+    if !hasTimeLeft(deadline) then return 0
     if game.status.isTerminal then return terminalScore(game, ply)
-    if depth <= 0 then return quiescence(game, alpha, beta, ply, deadline)
+    if depth <= 0 then return quiescence(game, alpha, beta, ply, deadline, 0)
 
     // --- TT probe ---
     val key      = Zobrist.hash(game)
@@ -135,7 +152,7 @@ object AlphaBeta:
     var cutoff         = false
     val iter           = moves.iterator
 
-    while iter.hasNext && !cutoff && System.nanoTime() < deadline do
+    while iter.hasNext && !cutoff && hasTimeLeft(deadline) do
       val move = iter.next()
       game.applyMove(move) match
         case None => ()
@@ -168,9 +185,13 @@ object AlphaBeta:
     alpha: Int,
     beta: Int,
     ply: Int,
-    deadline: Long
+    deadline: Long,
+    qDepth: Int
   ): Int =
+    if !hasTimeLeft(deadline) then return 0
     if game.status.isTerminal then return terminalScore(game, ply)
+    if qDepth >= MaxQuiescenceDepth then
+      return perspectiveScore(Evaluator.evaluate(game.board), game.currentPlayer)
 
     val inCheck = MoveValidator.isInCheck(game.board, game.currentPlayer)
 
@@ -198,12 +219,12 @@ object AlphaBeta:
 
     var cutoff = false
     val iter   = tactical.iterator
-    while iter.hasNext && !cutoff && System.nanoTime() < deadline do
+    while iter.hasNext && !cutoff && hasTimeLeft(deadline) do
       val move = iter.next()
       game.applyMove(move) match
         case None => ()
         case Some(next) =>
-          val score = -quiescence(next, -beta, -currentAlpha, ply + 1, deadline)
+          val score = -quiescence(next, -beta, -currentAlpha, ply + 1, deadline, qDepth + 1)
           if score > best then best = score
           if score > currentAlpha then currentAlpha = score
           if currentAlpha >= beta then cutoff = true
@@ -263,3 +284,6 @@ object AlphaBeta:
         val idx = MoveOrderer.pieceTypeIndex(piece) * 64 + move.to.row * 8 + move.to.col
         history(idx) = (history(idx) + depth * depth).min(1_000_000)
       case None => ()
+
+  private def hasTimeLeft(deadline: Long): Boolean =
+    System.nanoTime() < deadline
