@@ -31,10 +31,9 @@ class AlphaBetaSpec extends AnyWordSpec with Matchers {
     }
 
     "find mate in 1 — back-rank mate" in {
-      // White rook on a8, Black king on g8 with pawns on f7/g7/h7 blocked
-      // White to move: Ra1-a8 is already checkmate setup; use a simpler FEN
-      // Black king on h8, white rooks on a1 and b1 — Ra8#
-      val fen  = "7k/8/8/8/8/8/8/RR5K w - - 0 1"
+      // Black king h8, White king g6 (covers g7/g8/h7), White rook a1.
+      // Ra1-a8# — rook checks on rank 8, all king escapes are covered by Kg6.
+      val fen  = "7k/8/6K1/8/8/8/8/R7 w - - 0 1"
       val game = loadFen(fen)
       val move = AlphaBeta.bestMove(game, timeLimitMs = 3000L, maxDepth = 3)
       move shouldBe defined
@@ -44,8 +43,9 @@ class AlphaBetaSpec extends AnyWordSpec with Matchers {
     }
 
     "find mate in 1 — queen delivers checkmate" in {
-      // White queen on h5, Black king on g8 (h7 pawn gone), White king on e1 — Qxh7#
-      val fen  = "6k1/8/8/7Q/8/8/8/4K3 w - - 0 1"
+      // Black king f8, White king e6 (covers e7/f7), White queen h5.
+      // Qh5-h8# — queen checks on rank 8, king has no escape (g7/g8 covered by queen, e7/f7 by king).
+      val fen  = "5k2/8/4K3/7Q/8/8/8/8 w - - 0 1"
       val game = loadFen(fen)
       val move = AlphaBeta.bestMove(game, timeLimitMs = 3000L, maxDepth = 3)
       move shouldBe defined
