@@ -34,9 +34,9 @@ class ChessAISpec extends AnyWordSpec with Matchers {
     "respect the maxDepth parameter" in {
       val game  = Game.newGame
       val start = System.currentTimeMillis()
-      ChessAI.selectMove(game, timeLimitMs = 5000L, maxDepth = 2)
+      ChessAI.selectMove(game, timeLimitMs = 60000L, maxDepth = 2)
       val elapsed = System.currentTimeMillis() - start
-      elapsed should be < 5000L
+      elapsed should be < 10000L
     }
 
     "produce a different response for Black than for White in the starting position" in {

@@ -41,7 +41,7 @@ object MoveOrderer:
   ): Int =
     val board    = game.board
     val captured = capturedPiece(move, game)
-    val backtrackPenalty = if isImmediateBacktrack(move, game) then BacktrackPenalty else 0
+    val backtrackPenalty = if isOwnBacktrack(move, game) then BacktrackPenalty else 0
 
     if ttMove.contains(move) then
       TTBase
@@ -54,8 +54,15 @@ object MoveOrderer:
     else
       historyScore(move, board, history) - backtrackPenalty
 
-  private def isImmediateBacktrack(move: Move, game: Game): Boolean =
-    game.lastMove.exists(last => move.from == last.to && move.to == last.from)
+  /** True if `move` reverses the current player's *own* previous move.
+    * `moveHistory` ends with the opponent's most recent move, so the current
+    * player's prior move is at index `length - 2`. */
+  private def isOwnBacktrack(move: Move, game: Game): Boolean =
+    val history = game.moveHistory
+    history.length >= 2 && {
+      val ownPrev = history(history.length - 2).move
+      move.from == ownPrev.to && move.to == ownPrev.from
+    }
 
   /** The piece captured by this move, if any (including en passant). */
   def capturedPiece(move: Move, game: Game): Option[Piece] =

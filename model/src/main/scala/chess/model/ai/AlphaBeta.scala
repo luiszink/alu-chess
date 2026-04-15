@@ -109,13 +109,14 @@ object AlphaBeta:
   ): Int =
     if !hasTimeLeft(deadline) then return 0
     if game.status.isTerminal then return terminalScore(game, ply)
+    if ply > 0 && isRepetition(game) then return 0
     if depth <= 0 then return quiescence(game, alpha, beta, ply, deadline, 0)
 
     // --- TT probe ---
     val key      = Zobrist.hash(game)
     val ttEntry  = tt.probe(key)
     ttEntry match
-      case Some(e) if e.depth >= depth =>
+      case Some(e) if e.depth >= depth && !isRepetition(game) =>
         e.bound match
           case TranspositionTable.Bound.Exact                       => return e.score
           case TranspositionTable.Bound.Lower if e.score >= beta    => return e.score
@@ -287,3 +288,9 @@ object AlphaBeta:
 
   private def hasTimeLeft(deadline: Long): Boolean =
     System.nanoTime() < deadline
+
+  private def isRepetition(game: Game): Boolean =
+    game.repetitionKeys.nonEmpty && {
+      val current = game.repetitionKeys.last
+      game.repetitionKeys.init.contains(current)
+    }
