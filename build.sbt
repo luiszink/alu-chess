@@ -74,3 +74,8 @@ lazy val root = project
     Compile / unmanagedSourceDirectories := Nil,
     Test / unmanagedSourceDirectories    := Nil,
   )
+
+addCommandAlias(
+  "runAll",
+  ";model/bgRunMain chess.model.api.ModelServer ;controller/runMain chess.controller.api.ControllerServer"
+)

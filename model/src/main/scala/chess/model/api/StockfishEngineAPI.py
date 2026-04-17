@@ -8,6 +8,7 @@ from typing import AsyncIterator, Optional
 import chess
 import chess.engine
 from fastapi import FastAPI, HTTPException
+from fastapi.responses import JSONResponse
 from pydantic import BaseModel, ConfigDict, Field
 
 
@@ -246,6 +247,13 @@ async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
 
 
 app = FastAPI(title="Stockfish Engine API", version="1.0.0", lifespan=lifespan)
+
+
+@app.middleware("http")
+async def set_content_type(request, call_next):
+	response = await call_next(request)
+	response.headers["Content-Type"] = "application/json; charset=utf-8"
+	return response
 
 
 @app.get("/health")

@@ -42,7 +42,7 @@ object ModelRoutes:
         .getOrElse(DefaultTimeout)
 
     private def decodeBody(resp: Response[IO]): IO[Json] =
-      resp.as[String].map { raw =>
+      resp.bodyText.compile.string.map { raw =>
         val body = raw.trim
         if body.isEmpty then Json.obj()
         else io.circe.parser.parse(body).getOrElse(Json.obj(
@@ -144,7 +144,11 @@ object ModelRoutes:
   private def toProxyResponse(result: Either[EngineFailure, Json]): IO[Response[IO]] =
     result match
       case Right(json)          => Ok(json)
-      case Left((status, json)) => IO.pure(Response[IO](status).withEntity(json))
+      case Left((status, json)) =>
+        Ok(json).map(resp => resp.withStatus(status))
+
+  private def jsonResponse(status: Status, json: Json): IO[Response[IO]] =
+    Ok(json).map(resp => resp.withStatus(status))
 
   def routesWith(engineProxy: EngineProxy): HttpRoutes[IO] = HttpRoutes.of[IO] {
 
@@ -170,7 +174,7 @@ object ModelRoutes:
 
         result match
           case Right(game) => Ok(gameToJson(game))
-          case Left(err)   => IO.pure(Response[IO](errorStatus(err)).withEntity(errorResponse(err)))
+          case Left(err)   => jsonResponse(errorStatus(err), errorResponse(err))
       }
 
     // POST /api/model/legal-moves  { "fen": "..." }
@@ -286,7 +290,7 @@ object ModelRoutes:
                   case Right(_)  => Ok(json)
                   case Left(err) => BadGateway(serviceError("InvalidEngineResponse", err.message))
               case Left((status, json)) =>
-                IO.pure(Response[IO](status).withEntity(json))
+                jsonResponse(status, json)
             }
       }
 
@@ -305,7 +309,7 @@ object ModelRoutes:
                       case Left(err) => BadGateway(serviceError("InvalidEngineResponse", err.message))
                   case None => Ok(json)
               case Left((status, json)) =>
-                IO.pure(Response[IO](status).withEntity(json))
+                jsonResponse(status, json)
             }
       }
 

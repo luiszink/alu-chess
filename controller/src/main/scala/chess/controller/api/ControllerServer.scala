@@ -5,6 +5,8 @@ import cats.effect.std.Queue
 import cats.syntax.foldable.*
 import com.comcast.ip4s.*
 import org.http4s.*
+import org.http4s.dsl.io.*
+import org.http4s.circe.*
 import org.http4s.ember.server.EmberServerBuilder
 import org.http4s.server.middleware.CORS
 import io.circe.*
@@ -14,6 +16,18 @@ import chess.controller.Controller
 import chess.util.Observer
 
 object ControllerServer extends IOApp:
+
+  private def jsonAppWithNotFound(routes: HttpRoutes[IO]): HttpApp[IO] =
+    HttpApp[IO] { req =>
+      routes.run(req).getOrElseF {
+        NotFound(Json.obj(
+          "error"   -> Json.fromString("NotFound"),
+          "message" -> Json.fromString("Route not found"),
+          "method"  -> Json.fromString(req.method.name),
+          "path"    -> Json.fromString(req.uri.path.renderString),
+        ))
+      }
+    }
 
   private def gameToJson(game: Game): Json = Json.obj(
     "fen"            -> Json.fromString(Fen.toFen(game)),
@@ -51,7 +65,7 @@ object ControllerServer extends IOApp:
       _ <- IO(ctrl.add(observer))
 
       routes = ControllerRoutes(ctrl, sseQueues)
-      app    = CORS.policy.withAllowOriginAll(routes.orNotFound)
+      app    = CORS.policy.withAllowOriginAll(jsonAppWithNotFound(routes))
 
       _ <- IO.println(s"Controller-Service starting on port $port ...")
       _ <- EmberServerBuilder
