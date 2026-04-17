@@ -14,6 +14,7 @@ Inspiration: [Lichess](https://lichess.org/), aber wesentlich einfacher.
 - Swing-GUI im Lichess-Stil mit Drag-and-Click-Bedienung
 - Text UI (TUI) mit algebraischer Notation (`e2 e4`, `e7 e8 Q`)
 - Schachuhr mit konfigurierbaren Zeitkontrollen (Bullet, Blitz, Rapid, Classical)
+- Interne KI (Alpha-Beta) sowie Stockfish-Anbindung über separaten Engine-Service
 - FEN-Import/-Export (beliebige Stellungen laden)
 - PGN-Export und -Replay (Partien im Standardformat speichern)
 - Zughistorie mit SAN-Notation und Navigation (vor/zurück/Anfang/Ende)
@@ -28,10 +29,12 @@ Inspiration: [Lichess](https://lichess.org/), aber wesentlich einfacher.
 |---|---|
 | Sprache | Scala 3.6.4 |
 | Build Tool | sbt 1.10.7 |
+| Python Engine Service | FastAPI 0.115 + Uvicorn + python-chess |
 | Testing | ScalaTest 3.2.19 |
 | Coverage | sbt-scoverage 2.2.2 |
 | GUI | Scala Swing 3.0.0 |
 | REST API | Http4s 0.23 + Circe |
+| Container | Docker (Stockfish-Service) |
 | Architektur | MVC + Observer, Multi-Module (sbt) |
 
 ---
@@ -42,6 +45,7 @@ Inspiration: [Lichess](https://lichess.org/), aber wesentlich einfacher.
 
 - JDK 17+ (empfohlen: JDK 21)
 - sbt 1.10.x
+- Docker Desktop (für den Stockfish-Engine-Service)
 
 ### Kompilieren
 
@@ -64,11 +68,24 @@ sbt "controller/run"
 ### REST API starten
 
 ```bash
+# Stockfish-Engine-Service (Port 8000, FastAPI + Stockfish im Container)
+docker build -t alu-stockfish-engine:dev .
+docker run --name alu-stockfish -d -p 8000:8000 alu-stockfish-engine:dev
+
 # Model-Service (Port 8082)
+# Optional: ENGINE_BASE_URL anpassen, falls der Engine-Service nicht auf localhost:8000 läuft
+# Windows PowerShell: $env:ENGINE_BASE_URL = "http://localhost:8000"
 sbt "model/runMain chess.model.api.ModelServer"
 
 # Controller-Service (Port 8081)
 sbt "controller/runMain chess.controller.api.ControllerServer"
+```
+
+Stockfish-Container stoppen/entfernen:
+
+```bash
+docker stop alu-stockfish
+docker rm alu-stockfish
 ```
 
 ### Coverage-Report erzeugen
@@ -90,6 +107,8 @@ Das Projekt ist als **sbt Multi-Module Build** organisiert:
 ```
 alu-chess/
 ├── build.sbt                          # Root-Build mit Modul-Definitionen
+├── Dockerfile                         # Container-Build für FastAPI + Stockfish
+├── requirements.txt                   # Python-Abhängigkeiten für Engine-Service
 ├── model/                             # Model-Modul (reine Domain-Logik)
 │   └── src/main/scala/chess/
 │       ├── model/
@@ -111,8 +130,9 @@ alu-chess/
 │       │   ├── fen/                   # FEN-Parser-Strategien (Regex, Combinator, Fast)
 │       │   ├── pgn/                   # PGN-Parser-Strategien (Regex, Combinator, Fast)
 │       │   └── api/
-│       │       ├── ModelRoutes.scala  # REST-Endpoints (Port 8082)
-│       │       └── ModelServer.scala  # Http4s-Server (IOApp)
+│       │       ├── ModelRoutes.scala      # REST-Endpoints inkl. Stockfish-Proxy (Port 8082)
+│       │       ├── ModelServer.scala      # Http4s-Server (IOApp)
+│       │       └── StockfishEngineAPI.py  # FastAPI-Engine-Service (Port 8000)
 │       └── util/
 │           ├── Observable.scala       # Observer-Pattern (Trait)
 │           └── Observer.scala         # Observer-Interface
@@ -158,6 +178,7 @@ Das Projekt folgt dem **MVC-Pattern** mit **Observer** für lose Kopplung und is
 - **Controller-Modul** (`controller/`) – Koordiniert Use Cases (Zug ausführen, FEN laden, Aufgeben, Uhr, Replay). Implementiert `Observable` und hält den Spielzustand. Abhängig vom Model-Modul. Eigener REST-Service via Http4s (Port 8081).
 - **View (aview)** – Swing-GUI und TUI als `Observer` im Controller-Modul. Beide reagieren auf dieselben Controller-Events.
 - **REST APIs** – Beide Module exponieren Http4s-Endpoints. Der Controller-Service kommuniziert mit dem Model-Service per HTTP (Microservice-fähig).
+- **Stockfish-Service** – Separater Python/FastAPI-Service im Docker-Container. Der Model-Service leitet Engine-Requests dorthin weiter (`ENGINE_BASE_URL`, Default: `http://localhost:8000`).
 
 ### REST API Endpoints
 
@@ -166,6 +187,9 @@ Das Projekt folgt dem **MVC-Pattern** mit **Observer** für lose Kopplung und is
 | Model (8082) | `GET /api/model/new-game` | Initiales Spielfeld |
 | Model (8082) | `POST /api/model/validate-move` | Zug validieren |
 | Model (8082) | `POST /api/model/legal-moves` | Legale Züge für Position |
+| Model (8082) | `GET /api/model/stockfish/health` | Healthcheck des Engine-Service |
+| Model (8082) | `POST /api/model/stockfish/best-move` | Besten Zug von Stockfish holen |
+| Model (8082) | `POST /api/model/stockfish/evaluate` | Stellung von Stockfish bewerten |
 | Controller (8081) | `GET /api/controller/state` | Spielzustand |
 | Controller (8081) | `POST /api/controller/move` | Zug ausführen |
 | Controller (8081) | `POST /api/controller/new-game` | Neues Spiel |
