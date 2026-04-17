@@ -12,7 +12,21 @@ import org.scalatest.matchers.should.Matchers
 
 class ModelRoutesSpec extends AnyWordSpec with Matchers:
 
-  private val app = ModelRoutes.routes.orNotFound
+  private val stubProxy: ModelRoutes.EngineProxy = new ModelRoutes.EngineProxy:
+    def health: IO[Either[(Status, Json), Json]] =
+      IO.pure(Right(Json.obj("status" -> Json.fromString("ok"))))
+    def bestMove(payload: Json): IO[Either[(Status, Json), Json]] =
+      IO.pure(Left(Status.ServiceUnavailable -> Json.obj(
+        "error"   -> Json.fromString("EngineUnavailable"),
+        "message" -> Json.fromString("stub"),
+      )))
+    def evaluate(payload: Json): IO[Either[(Status, Json), Json]] =
+      IO.pure(Left(Status.ServiceUnavailable -> Json.obj(
+        "error"   -> Json.fromString("EngineUnavailable"),
+        "message" -> Json.fromString("stub"),
+      )))
+
+  private val app = ModelRoutes.routesWith(stubProxy).orNotFound
 
   private val startFen = "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1"
 
@@ -221,5 +235,47 @@ class ModelRoutesSpec extends AnyWordSpec with Matchers:
       first.get[String]("name").toOption shouldBe defined
       first.get[String]("fen").toOption shouldBe defined
       first.get[String]("description").toOption shouldBe defined
+    }
+  }
+
+  "POST /api/model/stockfish/best-move" should {
+    "reject missing fen field" in {
+      val body = Json.obj("thinkTimeMs" -> Json.fromInt(1000))
+      val resp = post("/api/model/stockfish/best-move", body)
+      resp.status shouldBe Status.BadRequest
+      val json = bodyJson(resp)
+      json.hcursor.get[String]("error").toOption shouldBe Some("InvalidFenFormat")
+    }
+
+    "reject invalid fen before forwarding" in {
+      val body = Json.obj(
+        "fen"         -> Json.fromString("not-a-fen"),
+        "thinkTimeMs" -> Json.fromInt(1000),
+      )
+      val resp = post("/api/model/stockfish/best-move", body)
+      resp.status shouldBe Status.BadRequest
+      val json = bodyJson(resp)
+      json.hcursor.get[String]("error").toOption shouldBe Some("InvalidFenFormat")
+    }
+  }
+
+  "POST /api/model/stockfish/evaluate" should {
+    "reject missing fen field" in {
+      val body = Json.obj("thinkTimeMs" -> Json.fromInt(1000))
+      val resp = post("/api/model/stockfish/evaluate", body)
+      resp.status shouldBe Status.BadRequest
+      val json = bodyJson(resp)
+      json.hcursor.get[String]("error").toOption shouldBe Some("InvalidFenFormat")
+    }
+
+    "reject invalid fen before forwarding" in {
+      val body = Json.obj(
+        "fen"         -> Json.fromString("not-a-fen"),
+        "thinkTimeMs" -> Json.fromInt(1000),
+      )
+      val resp = post("/api/model/stockfish/evaluate", body)
+      resp.status shouldBe Status.BadRequest
+      val json = bodyJson(resp)
+      json.hcursor.get[String]("error").toOption shouldBe Some("InvalidFenFormat")
     }
   }
