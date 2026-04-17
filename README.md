@@ -68,10 +68,18 @@ sbt "controller/run"
 ### REST API starten
 
 ```bash
-# Stockfish-Engine-Service (Port 8000, FastAPI + Stockfish im Container)
+# 1. Stockfish-Engine-Service (Port 8000, FastAPI + Stockfish im Container)
 docker build -t alu-stockfish-engine:dev .
 docker run --name alu-stockfish -d -p 8000:8000 alu-stockfish-engine:dev
 
+# 2. Model- und Controller-Service in einem sbt-Aufruf starten
+#    (Model läuft im Hintergrund auf Port 8082, Controller im Vordergrund auf Port 8081)
+sbt runAll
+```
+
+Alternativ einzeln in separaten Terminals starten:
+
+```bash
 # Model-Service (Port 8082)
 # Optional: ENGINE_BASE_URL anpassen, falls der Engine-Service nicht auf localhost:8000 läuft
 # Windows PowerShell: $env:ENGINE_BASE_URL = "http://localhost:8000"
@@ -87,6 +95,10 @@ Stockfish-Container stoppen/entfernen:
 docker stop alu-stockfish
 docker rm alu-stockfish
 ```
+
+> Hinweis: Beide Services müssen parallel laufen, bevor das Web-Frontend
+> ([alu-chess-web](../SoftwarearchitekturWeb/alu-chess-web)) Anfragen an
+> Port 8081 (Controller) bzw. 8082 (Model) senden kann.
 
 ### Coverage-Report erzeugen
 
