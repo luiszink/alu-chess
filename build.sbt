@@ -64,10 +64,28 @@ lazy val controller = project
     coverageFailOnMinimum      := true,
   )
 
+// ── PlayerService module ──────────────────────────────────────
+// Player registration and matchmaking. No dependency on model or controller.
+lazy val playerservice = project
+  .in(file("playerservice"))
+  .settings(
+    commonSettings,
+    name := "alu-chess-playerservice",
+    libraryDependencies ++= Seq(
+      "io.circe" %% "circe-core"    % circeVersion,
+      "io.circe" %% "circe-generic" % circeVersion,
+      "io.circe" %% "circe-parser"  % circeVersion,
+      "org.http4s" %% "http4s-ember-server" % http4sVersion,
+      "org.http4s" %% "http4s-ember-client" % http4sVersion,
+      "org.http4s" %% "http4s-circe"        % http4sVersion,
+      "org.http4s" %% "http4s-dsl"          % http4sVersion,
+    ),
+  )
+
 // ── Root aggregate ────────────────────────────────────────────
 lazy val root = project
   .in(file("."))
-  .aggregate(model, controller)
+  .aggregate(model, controller, playerservice)
   .settings(
     name := "alu-chess",
     publish / skip := true,
@@ -77,5 +95,7 @@ lazy val root = project
 
 addCommandAlias(
   "runAll",
-  ";model/bgRunMain chess.model.api.ModelServer ;controller/runMain chess.controller.api.ControllerServer"
+  ";model/bgRunMain chess.model.api.ModelServer" +
+  " ;playerservice/bgRunMain chess.playerservice.api.PlayerServer" +
+  " ;controller/runMain chess.controller.api.ControllerServer"
 )
