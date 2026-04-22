@@ -160,21 +160,22 @@ object ModelRoutes:
     case req @ POST -> Root / "api" / "model" / "validate-move" =>
       req.as[Json].flatMap { body =>
         val c = body.hcursor
-        val result = for
-          fen  <- c.get[String]("fen").left.map(_ => ChessError.InvalidFenFormat("Missing 'fen' field"))
-          from <- c.get[String]("from").left.map(_ => ChessError.InvalidMoveFormat("Missing 'from' field"))
-          to   <- c.get[String]("to").left.map(_ => ChessError.InvalidMoveFormat("Missing 'to' field"))
-          promo = c.get[String]("promotion").toOption.flatMap(_.headOption)
-          game <- Fen.parseE(fen)
-          fromPos <- Position.fromStringE(from)
-          toPos   <- Position.fromStringE(to)
-          move = Move(fromPos, toPos, promo)
-          updated <- game.applyMoveE(move)
-        yield updated
-
-        result match
+        IO.blocking {
+          for
+            fen  <- c.get[String]("fen").left.map(_ => ChessError.InvalidFenFormat("Missing 'fen' field"))
+            from <- c.get[String]("from").left.map(_ => ChessError.InvalidMoveFormat("Missing 'from' field"))
+            to   <- c.get[String]("to").left.map(_ => ChessError.InvalidMoveFormat("Missing 'to' field"))
+            promo = c.get[String]("promotion").toOption.flatMap(_.headOption)
+            game <- Fen.parseE(fen)
+            fromPos <- Position.fromStringE(from)
+            toPos   <- Position.fromStringE(to)
+            move = Move(fromPos, toPos, promo)
+            updated <- game.applyMoveE(move)
+          yield updated
+        }.flatMap {
           case Right(game) => Ok(gameToJson(game))
           case Left(err)   => jsonResponse(errorStatus(err), errorResponse(err))
+        }
       }
 
     // POST /api/model/legal-moves  { "fen": "..." }
@@ -183,29 +184,33 @@ object ModelRoutes:
         body.hcursor.get[String]("fen") match
           case Left(_) => BadRequest(errorResponse(ChessError.InvalidFenFormat("Missing 'fen' field")))
           case Right(fenStr) =>
-            Fen.parseE(fenStr) match
-              case Left(err) => BadRequest(errorResponse(err))
-              case Right(game) =>
-                val moves = MoveValidator.legalMoves(game.board, game.currentPlayer, game.movedPieces, game.lastMove)
-                Ok(Json.obj("moves" -> Json.fromValues(moves.map(moveToJson))))
+            IO.blocking {
+              Fen.parseE(fenStr).map { game =>
+                MoveValidator.legalMoves(game.board, game.currentPlayer, game.movedPieces, game.lastMove)
+                  .map(moveToJson)
+              }
+            }.flatMap {
+              case Left(err)    => BadRequest(errorResponse(err))
+              case Right(moves) => Ok(Json.obj("moves" -> Json.fromValues(moves)))
+            }
       }
 
     // POST /api/model/legal-moves-for-square  { "fen": "...", "square": "e2" }
     case req @ POST -> Root / "api" / "model" / "legal-moves-for-square" =>
       req.as[Json].flatMap { body =>
         val c = body.hcursor
-        val result = for
-          fenStr <- c.get[String]("fen").left.map(_ => ChessError.InvalidFenFormat("Missing 'fen' field"))
-          sq     <- c.get[String]("square").left.map(_ => ChessError.InvalidPositionString("Missing 'square' field"))
-          game   <- Fen.parseE(fenStr)
-          pos    <- Position.fromStringE(sq)
-        yield (game, pos)
-
-        result match
-          case Left(err) => BadRequest(errorResponse(err))
-          case Right((game, pos)) =>
+        IO.blocking {
+          for
+            fenStr <- c.get[String]("fen").left.map(_ => ChessError.InvalidFenFormat("Missing 'fen' field"))
+            sq     <- c.get[String]("square").left.map(_ => ChessError.InvalidPositionString("Missing 'square' field"))
+            game   <- Fen.parseE(fenStr)
+            pos    <- Position.fromStringE(sq)
+          yield
             val allMoves = MoveValidator.legalMoves(game.board, game.currentPlayer, game.movedPieces, game.lastMove)
-            val filtered = allMoves.filter(_.from == pos)
+            (game, pos, allMoves.filter(_.from == pos))
+        }.flatMap {
+          case Left(err) => BadRequest(errorResponse(err))
+          case Right((game, pos, filtered)) =>
             val piece = game.board.cell(pos)
             Ok(Json.obj(
               "square" -> Json.fromString(pos.toString),
@@ -223,6 +228,7 @@ object ModelRoutes:
                 )
               })
             ))
+        }
       }
 
     // POST /api/model/parse-fen  { "fen": "..." }
@@ -231,17 +237,19 @@ object ModelRoutes:
         body.hcursor.get[String]("fen") match
           case Left(_) => BadRequest(errorResponse(ChessError.InvalidFenFormat("Missing 'fen' field")))
           case Right(fenStr) =>
-            Fen.parseE(fenStr) match
+            IO.blocking(Fen.parseE(fenStr)).flatMap {
               case Right(game) => Ok(gameToJson(game))
               case Left(err)   => BadRequest(errorResponse(err))
+            }
       }
 
     // POST /api/model/to-fen  { "fen": "..." } (accepts game JSON with fen)
     case req @ POST -> Root / "api" / "model" / "to-fen" =>
       req.as[Json].flatMap { body =>
-        GameJson.fromJson(body) match
+        IO.blocking(GameJson.fromJson(body)).flatMap {
           case Right(game) => Ok(Json.obj("fen" -> Json.fromString(Fen.toFen(game))))
           case Left(err)   => BadRequest(errorResponse(err))
+        }
       }
 
     // POST /api/model/parse-pgn  { "pgn": "1. e4 e5 2. Nf3 ..." }
@@ -250,17 +258,19 @@ object ModelRoutes:
         body.hcursor.get[String]("pgn") match
           case Left(_) => BadRequest(errorResponse(ChessError.InvalidPgnFormat("Missing 'pgn' field")))
           case Right(pgnStr) =>
-            Pgn.replayE(pgnStr) match
+            IO.blocking(Pgn.replayE(pgnStr)).flatMap {
               case Right(game) => Ok(gameToJson(game))
               case Left(err)   => BadRequest(errorResponse(err))
+            }
       }
 
     // POST /api/model/to-pgn  { "fen": "..." }  (game → PGN string)
     case req @ POST -> Root / "api" / "model" / "to-pgn" =>
       req.as[Json].flatMap { body =>
-        GameJson.fromJson(body) match
+        IO.blocking(GameJson.fromJson(body)).flatMap {
           case Right(game) => Ok(Json.obj("pgn" -> Json.fromString(Pgn.toPgn(game))))
           case Left(err)   => BadRequest(errorResponse(err))
+        }
       }
 
     // GET /api/model/test-positions

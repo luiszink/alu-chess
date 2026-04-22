@@ -17,7 +17,7 @@ import java.time.format.DateTimeFormatter
 object Pgn:
 
   /** Currently active parser. Change to switch between implementations. */
-  var activeParser: PgnParserType = PgnParserType.Combinator
+  var activeParser: PgnParserType = PgnParserType.Fast
 
   /** Parse a PGN string into a PgnGame (tags + SAN tokens). Returns Left with error detail on failure. */
   def parseGameE(pgn: String): Either[ChessError, ParsedPgnGame] = activeParser.instance.parseE(pgn)
