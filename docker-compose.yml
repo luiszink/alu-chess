@@ -36,7 +36,7 @@ services:
   stockfish:
     build:
       context: .
-      dockerfile: Dockerfile
+      dockerfile: Dockerfile.stockfish
     ports:
       - "8000:8000"
     healthcheck:
