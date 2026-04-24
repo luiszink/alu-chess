@@ -6,7 +6,7 @@ ENV STOCKFISH_PATH=/usr/games/stockfish
 WORKDIR /app
 
 RUN apt-get update \
-	&& apt-get install -y --no-install-recommends stockfish \
+	&& apt-get install -y --no-install-recommends stockfish curl \
 	&& rm -rf /var/lib/apt/lists/*
 
 COPY requirements.txt /app/requirements.txt

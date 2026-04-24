@@ -1,4 +1,4 @@
-FROM sbt:1.10.7-eclipse-temurin-21 AS builder
+FROM sbtscala/scala-sbt:eclipse-temurin-alpine-25.0.1_8_1.12.9_3.3.7 AS builder
 WORKDIR /app
 # Abhängigkeiten cachen bevor Source kopiert wird
 COPY build.sbt .
@@ -8,6 +8,7 @@ COPY . .
 RUN sbt model/assembly
 
 FROM eclipse-temurin:21-jre-alpine
+RUN apk add --no-cache curl
 WORKDIR /app
 COPY --from=builder /app/model/target/scala-3.6.4/alu-chess-model-assembly-*.jar app.jar
 EXPOSE 8082

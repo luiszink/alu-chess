@@ -4,7 +4,7 @@ import cats.effect.{IO, Resource}
 import mongo4cats.client.MongoClient
 import mongo4cats.collection.MongoCollection
 import mongo4cats.operations.{Filter, Index}
-import mongo4cats.circe.*
+import mongo4cats.circe.given
 
 class MongoGameDao(collection: MongoCollection[IO, GameRow]) extends GameDao:
 
@@ -33,7 +33,7 @@ object MongoGameDao:
     MongoClient.fromConnectionString[IO](uri).evalMap { client =>
       for
         db         <- client.getDatabase(dbName)
-        collection <- db.getCollectionWithCirce[GameRow]("games")
+        collection <- db.getCollectionWithCodec[GameRow]("games")
         dao         = new MongoGameDao(collection)
         _          <- dao.init()
       yield dao

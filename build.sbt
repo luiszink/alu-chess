@@ -3,7 +3,7 @@ val scala3Version = "3.6.4"
 val http4sVersion = "0.23.30"
 val circeVersion  = "0.14.10"
 val slickVersion      = "3.5.2"
-val mongo4catsVersion = "0.7.11"
+val mongo4catsVersion = "0.7.17"
 
 val assemblySettings = Seq(
   assembly / assemblyMergeStrategy := {
