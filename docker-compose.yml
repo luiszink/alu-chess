@@ -1,0 +1,81 @@
+services:
+
+  # ── PostgreSQL ─────────────────────────────────────────────────
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB:       chess
+      POSTGRES_USER:     chess
+      POSTGRES_PASSWORD: chess
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U chess -d chess"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  # ── Stockfish Engine (Python/FastAPI) ──────────────────────────
+  stockfish:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    ports:
+      - "8000:8000"
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sf http://localhost:8000/health || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # ── Model Service ──────────────────────────────────────────────
+  model:
+    build:
+      context: .
+      dockerfile: Dockerfile.model
+    ports:
+      - "8082:8082"
+    environment:
+      PORT:            "8082"
+      ENGINE_BASE_URL: http://stockfish:8000
+    depends_on:
+      stockfish:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sf http://localhost:8082/health || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  # ── Controller Service ─────────────────────────────────────────
+  controller:
+    build:
+      context: .
+      dockerfile: Dockerfile.controller
+    ports:
+      - "8081:8081"
+    environment:
+      PORT:        "8081"
+      DB_URL:      jdbc:postgresql://postgres:5432/chess
+      DB_USER:     chess
+      DB_PASSWORD: chess
+    depends_on:
+      postgres:
+        condition: service_healthy
+      model:
+        condition: service_healthy
+
+  # ── PlayerService ──────────────────────────────────────────────
+  playerservice:
+    build:
+      context: .
+      dockerfile: Dockerfile.playerservice
+    ports:
+      - "8083:8083"
+    environment:
+      PORT: "8083"
+
+volumes:
+  postgres_data:

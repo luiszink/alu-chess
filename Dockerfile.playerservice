@@ -1,0 +1,14 @@
+FROM sbt:1.10.7-eclipse-temurin-21 AS builder
+WORKDIR /app
+COPY build.sbt .
+COPY project/ project/
+RUN sbt update
+COPY . .
+RUN sbt playerservice/assembly
+
+FROM eclipse-temurin:21-jre-alpine
+WORKDIR /app
+COPY --from=builder /app/playerservice/target/scala-3.6.4/alu-chess-playerservice-assembly-*.jar app.jar
+EXPOSE 8083
+ENV PORT=8083
+ENTRYPOINT ["java", "-jar", "app.jar"]

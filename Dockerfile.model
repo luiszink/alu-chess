@@ -1,0 +1,15 @@
+FROM sbt:1.10.7-eclipse-temurin-21 AS builder
+WORKDIR /app
+# Abhängigkeiten cachen bevor Source kopiert wird
+COPY build.sbt .
+COPY project/ project/
+RUN sbt update
+COPY . .
+RUN sbt model/assembly
+
+FROM eclipse-temurin:21-jre-alpine
+WORKDIR /app
+COPY --from=builder /app/model/target/scala-3.6.4/alu-chess-model-assembly-*.jar app.jar
+EXPOSE 8082
+ENV PORT=8082
+ENTRYPOINT ["java", "-jar", "app.jar"]

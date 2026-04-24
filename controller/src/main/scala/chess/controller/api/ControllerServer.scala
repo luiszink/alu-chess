@@ -15,6 +15,7 @@ import io.circe.*
 import io.circe.syntax.*
 import chess.model.*
 import chess.controller.{Controller, GameRegistry}
+import chess.model.{InMemoryGameRepository, PostgresGameRepository}
 import chess.util.Observer
 
 object ControllerServer extends IOApp:
@@ -45,8 +46,19 @@ object ControllerServer extends IOApp:
 
     EmberClientBuilder.default[IO].build.use { httpClient =>
       for
+        // ── Repository: Postgres wenn DB_URL gesetzt, sonst In-Memory ──
+        repo <- IO.blocking {
+          sys.env.get("DB_URL") match
+            case Some(url) =>
+              val user     = sys.env.getOrElse("DB_USER", "chess")
+              val password = sys.env.getOrElse("DB_PASSWORD", "chess")
+              PostgresGameRepository.create(url, user, password)
+            case None =>
+              InMemoryGameRepository()
+        }
+
         // ── Legacy single-game support (unchanged) ────────────
-        ctrl      <- IO(Controller())
+        ctrl      <- IO(Controller(repo))
         sseQueues <- Ref.of[IO, List[Queue[IO, Option[Json]]]](Nil)
 
         observer = new Observer:

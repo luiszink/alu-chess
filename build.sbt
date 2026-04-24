@@ -2,6 +2,16 @@ val scala3Version = "3.6.4"
 
 val http4sVersion = "0.23.30"
 val circeVersion  = "0.14.10"
+val slickVersion  = "3.5.2"
+
+val assemblySettings = Seq(
+  assembly / assemblyMergeStrategy := {
+    case PathList("META-INF", "services", _*) => MergeStrategy.concat
+    case PathList("META-INF", _*)             => MergeStrategy.discard
+    case "reference.conf"                     => MergeStrategy.concat
+    case _                                    => MergeStrategy.first
+  }
+)
 
 // Shared settings for all subprojects
 lazy val commonSettings = Seq(
@@ -20,7 +30,9 @@ lazy val model = project
   .in(file("model"))
   .settings(
     commonSettings,
+    assemblySettings,
     name := "alu-chess-model",
+    assembly / mainClass := Some("chess.model.api.ModelServer"),
     libraryDependencies ++= Seq(
       // Parser combinators for FEN/PGN
       "org.scala-lang.modules" %% "scala-parser-combinators" % "2.4.0",
@@ -33,6 +45,10 @@ lazy val model = project
       "org.http4s" %% "http4s-ember-client" % http4sVersion,
       "org.http4s" %% "http4s-circe"        % http4sVersion,
       "org.http4s" %% "http4s-dsl"          % http4sVersion,
+      // Slick + PostgreSQL (Persistence)
+      "com.typesafe.slick" %% "slick"          % slickVersion,
+      "com.typesafe.slick" %% "slick-hikaricp" % slickVersion,
+      "org.postgresql"      % "postgresql"      % "42.7.4",
     ),
     coverageMinimumStmtTotal   := 90,
     coverageMinimumBranchTotal := 90,
@@ -47,7 +63,9 @@ lazy val controller = project
   .dependsOn(model)
   .settings(
     commonSettings,
+    assemblySettings,
     name := "alu-chess-controller",
+    assembly / mainClass := Some("chess.controller.api.ControllerServer"),
     libraryDependencies ++= Seq(
       // Swing GUI
       "org.scala-lang.modules" %% "scala-swing" % "3.0.0",
@@ -70,7 +88,9 @@ lazy val playerservice = project
   .in(file("playerservice"))
   .settings(
     commonSettings,
+    assemblySettings,
     name := "alu-chess-playerservice",
+    assembly / mainClass := Some("chess.playerservice.api.PlayerServer"),
     libraryDependencies ++= Seq(
       "io.circe" %% "circe-core"    % circeVersion,
       "io.circe" %% "circe-generic" % circeVersion,
