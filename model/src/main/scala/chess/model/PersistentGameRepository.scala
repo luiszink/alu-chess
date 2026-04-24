@@ -1,20 +1,16 @@
 package chess.model
 
-import chess.model.dao.{GameDao, GameDaoImpl, GameRow}
-import scala.concurrent.{Await, ExecutionContext}
-import scala.concurrent.duration.*
-import scala.util.{Failure, Success}
+import cats.effect.unsafe.implicits.global
+import chess.model.dao.{GameDao, GameRow}
 
-class PostgresGameRepository private (dao: GameDao) extends GameRepository:
+class PersistentGameRepository(dao: GameDao) extends GameRepository:
   private var records: Vector[GameRecord] = Vector.empty
-  private given ec: ExecutionContext       = ExecutionContext.global
 
   override def save(record: GameRecord): Unit =
     records = record +: records
-    dao.insert(toRow(record)).onComplete {
-      case Failure(ex) => System.err.println(s"[DB] save failed for ${record.id}: ${ex.getMessage}")
-      case Success(_)  => ()
-    }
+    dao.insert(toRow(record))
+      .handleError(ex => System.err.println(s"[DB] save failed for ${record.id}: ${ex.getMessage}"))
+      .unsafeRunAndForget()
 
   override def findAll(): Vector[GameRecord] = records
 
@@ -23,17 +19,15 @@ class PostgresGameRepository private (dao: GameDao) extends GameRepository:
 
   override def delete(id: String): Unit =
     records = records.filterNot(_.id == id)
-    dao.delete(id).onComplete {
-      case Failure(ex) => System.err.println(s"[DB] delete failed for $id: ${ex.getMessage}")
-      case Success(_)  => ()
-    }
+    dao.delete(id)
+      .handleError(ex => System.err.println(s"[DB] delete failed for $id: ${ex.getMessage}"))
+      .unsafeRunAndForget()
 
   override def clear(): Unit =
     records = Vector.empty
-    dao.clear().onComplete {
-      case Failure(ex) => System.err.println(s"[DB] clear failed: ${ex.getMessage}")
-      case Success(_)  => ()
-    }
+    dao.clear()
+      .handleError(ex => System.err.println(s"[DB] clear failed: ${ex.getMessage}"))
+      .unsafeRunAndForget()
 
   override def exportRecordAsJson(id: String): Either[ChessError, String] =
     findById(id)
@@ -43,10 +37,9 @@ class PostgresGameRepository private (dao: GameDao) extends GameRepository:
   override def importRecordFromJson(json: String): Either[ChessError, GameRecord] =
     GameJson.fromRecordJsonString(json).map { record =>
       records = record +: records.filterNot(_.id == record.id)
-      dao.insert(toRow(record)).onComplete {
-        case Failure(ex) => System.err.println(s"[DB] import failed for ${record.id}: ${ex.getMessage}")
-        case Success(_)  => ()
-      }
+      dao.insert(toRow(record))
+        .handleError(ex => System.err.println(s"[DB] import failed for ${record.id}: ${ex.getMessage}"))
+        .unsafeRunAndForget()
       record
     }
 
@@ -62,9 +55,3 @@ class PostgresGameRepository private (dao: GameDao) extends GameRepository:
       initialTimeMs   = record.timeControl.map(_.initialTimeMs),
       incrementMs     = record.timeControl.map(_.incrementMs),
     )
-
-object PostgresGameRepository:
-  def create(url: String, user: String, password: String): PostgresGameRepository =
-    val dao = GameDaoImpl(url, user, password)
-    Await.result(dao.init(), 30.seconds)
-    new PostgresGameRepository(dao)

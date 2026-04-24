@@ -2,7 +2,8 @@ val scala3Version = "3.6.4"
 
 val http4sVersion = "0.23.30"
 val circeVersion  = "0.14.10"
-val slickVersion  = "3.5.2"
+val slickVersion      = "3.5.2"
+val mongo4catsVersion = "0.7.11"
 
 val assemblySettings = Seq(
   assembly / assemblyMergeStrategy := {
@@ -49,6 +50,9 @@ lazy val model = project
       "com.typesafe.slick" %% "slick"          % slickVersion,
       "com.typesafe.slick" %% "slick-hikaricp" % slickVersion,
       "org.postgresql"      % "postgresql"      % "42.7.4",
+      // MongoDB via mongo4cats (Cats Effect wrapper)
+      "io.github.kirill5k" %% "mongo4cats-core"  % mongo4catsVersion,
+      "io.github.kirill5k" %% "mongo4cats-circe" % mongo4catsVersion,
     ),
     coverageMinimumStmtTotal   := 90,
     coverageMinimumBranchTotal := 90,

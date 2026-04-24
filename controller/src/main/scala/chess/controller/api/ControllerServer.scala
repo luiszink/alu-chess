@@ -14,8 +14,8 @@ import org.http4s.server.middleware.CORS
 import io.circe.*
 import io.circe.syntax.*
 import chess.model.*
+import chess.model.dao.{SlickGameDao, MongoGameDao}
 import chess.controller.{Controller, GameRegistry}
-import chess.model.{InMemoryGameRepository, PostgresGameRepository}
 import chess.util.Observer
 
 object ControllerServer extends IOApp:
@@ -41,59 +41,65 @@ object ControllerServer extends IOApp:
     "isTerminal"     -> Json.fromBoolean(game.status.isTerminal),
   )
 
+  // ── Dependency Injection: DB via DB_TYPE Env-Variable ─────────
+  private def makeRepository: Resource[IO, GameRepository] =
+    sys.env.getOrElse("DB_TYPE", "memory") match
+      case "postgres" =>
+        Resource.eval(IO.blocking {
+          val url  = sys.env.getOrElse("DB_URL",      "jdbc:postgresql://localhost:5432/chess")
+          val user = sys.env.getOrElse("DB_USER",     "chess")
+          val pass = sys.env.getOrElse("DB_PASSWORD", "chess")
+          PersistentGameRepository(SlickGameDao.create(url, user, pass))
+        })
+      case "mongo" =>
+        val uri    = sys.env.getOrElse("MONGO_URI", "mongodb://localhost:27017")
+        val dbName = sys.env.getOrElse("MONGO_DB",  "chess")
+        MongoGameDao.resource(uri, dbName).map(PersistentGameRepository(_))
+      case _ =>
+        Resource.pure[IO, GameRepository](InMemoryGameRepository())
+
   override def run(args: List[String]): IO[ExitCode] =
     val port = sys.env.getOrElse("PORT", "8081").toInt
 
-    EmberClientBuilder.default[IO].build.use { httpClient =>
-      for
-        // ── Repository: Postgres wenn DB_URL gesetzt, sonst In-Memory ──
-        repo <- IO.blocking {
-          sys.env.get("DB_URL") match
-            case Some(url) =>
-              val user     = sys.env.getOrElse("DB_USER", "chess")
-              val password = sys.env.getOrElse("DB_PASSWORD", "chess")
-              PostgresGameRepository.create(url, user, password)
-            case None =>
-              InMemoryGameRepository()
-        }
+    makeRepository.use { repo =>
+      EmberClientBuilder.default[IO].build.use { httpClient =>
+        for
+          ctrl      <- IO(Controller(repo))
+          sseQueues <- Ref.of[IO, List[Queue[IO, Option[Json]]]](Nil)
 
-        // ── Legacy single-game support (unchanged) ────────────
-        ctrl      <- IO(Controller(repo))
-        sseQueues <- Ref.of[IO, List[Queue[IO, Option[Json]]]](Nil)
+          observer = new Observer:
+            override def update(): Unit =
+              val state = Json.obj(
+                "game"        -> gameToJson(ctrl.game),
+                "browseIndex" -> Json.fromInt(ctrl.browseIndex),
+                "totalStates" -> Json.fromInt(ctrl.gameStatesCount),
+                "isAtLatest"  -> Json.fromBoolean(ctrl.isAtLatest),
+                "isInReplay"  -> Json.fromBoolean(ctrl.isInReplay),
+                "statusText"  -> Json.fromString(ctrl.statusText),
+              )
+              val push = sseQueues.get.flatMap { queues =>
+                queues.traverse_(q => q.tryOffer(Some(state)).void)
+              }
+              push.unsafeRunAndForget()(using cats.effect.unsafe.implicits.global)
 
-        observer = new Observer:
-          override def update(): Unit =
-            val state = Json.obj(
-              "game"        -> gameToJson(ctrl.game),
-              "browseIndex" -> Json.fromInt(ctrl.browseIndex),
-              "totalStates" -> Json.fromInt(ctrl.gameStatesCount),
-              "isAtLatest"  -> Json.fromBoolean(ctrl.isAtLatest),
-              "isInReplay"  -> Json.fromBoolean(ctrl.isInReplay),
-              "statusText"  -> Json.fromString(ctrl.statusText),
-            )
-            val push = sseQueues.get.flatMap { queues =>
-              queues.traverse_(q => q.tryOffer(Some(state)).void)
-            }
-            push.unsafeRunAndForget()(using cats.effect.unsafe.implicits.global)
+          _ <- IO(ctrl.add(observer))
 
-        _ <- IO(ctrl.add(observer))
+          gameRegistry <- GameRegistry.make
+          playerClient  = PlayerServiceClient(httpClient)
 
-        // ── Multi-game infrastructure ─────────────────────────
-        gameRegistry <- GameRegistry.make
-        playerClient  = PlayerServiceClient(httpClient)
+          legacyRoutes = ControllerRoutes(ctrl, sseQueues)
+          multiRoutes  = MultiGameRoutes(gameRegistry, playerClient)
+          combined     = legacyRoutes <+> multiRoutes
+          app          = CORS.policy.withAllowOriginAll(jsonAppWithNotFound(combined))
 
-        legacyRoutes = ControllerRoutes(ctrl, sseQueues)
-        multiRoutes  = MultiGameRoutes(gameRegistry, playerClient)
-        combined     = legacyRoutes <+> multiRoutes
-        app          = CORS.policy.withAllowOriginAll(jsonAppWithNotFound(combined))
-
-        _ <- IO.println(s"Controller-Service starting on port $port ...")
-        _ <- EmberServerBuilder
-          .default[IO]
-          .withHost(host"0.0.0.0")
-          .withPort(Port.fromInt(port).get)
-          .withHttpApp(app)
-          .build
-          .useForever
-      yield ExitCode.Success
+          _ <- IO.println(s"Controller-Service starting on port $port (DB_TYPE=${sys.env.getOrElse("DB_TYPE", "memory")}) ...")
+          _ <- EmberServerBuilder
+            .default[IO]
+            .withHost(host"0.0.0.0")
+            .withPort(Port.fromInt(port).get)
+            .withHttpApp(app)
+            .build
+            .useForever
+        yield ExitCode.Success
+      }
     }

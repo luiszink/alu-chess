@@ -16,6 +16,21 @@ services:
       interval: 5s
       timeout: 5s
       retries: 10
+    profiles: ["postgres", "all"]
+
+  # ── MongoDB ────────────────────────────────────────────────────
+  mongo:
+    image: mongo:7-jammy
+    ports:
+      - "27017:27017"
+    volumes:
+      - mongo_data:/data/db
+    healthcheck:
+      test: ["CMD", "mongosh", "--eval", "db.adminCommand('ping')"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    profiles: ["mongo", "all"]
 
   # ── Stockfish Engine (Python/FastAPI) ──────────────────────────
   stockfish:
@@ -50,6 +65,7 @@ services:
       retries: 10
 
   # ── Controller Service ─────────────────────────────────────────
+  # DB_TYPE wird aus .env gelesen (postgres | mongo | memory)
   controller:
     build:
       context: .
@@ -58,12 +74,15 @@ services:
       - "8081:8081"
     environment:
       PORT:        "8081"
-      DB_URL:      jdbc:postgresql://postgres:5432/chess
-      DB_USER:     chess
-      DB_PASSWORD: chess
+      DB_TYPE:     ${DB_TYPE:-memory}
+      # PostgreSQL
+      DB_URL:      ${DB_URL:-jdbc:postgresql://postgres:5432/chess}
+      DB_USER:     ${DB_USER:-chess}
+      DB_PASSWORD: ${DB_PASSWORD:-chess}
+      # MongoDB
+      MONGO_URI:   ${MONGO_URI:-mongodb://mongo:27017}
+      MONGO_DB:    ${MONGO_DB:-chess}
     depends_on:
-      postgres:
-        condition: service_healthy
       model:
         condition: service_healthy
 
@@ -79,3 +98,4 @@ services:
 
 volumes:
   postgres_data:
+  mongo_data:

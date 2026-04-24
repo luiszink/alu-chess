@@ -1,5 +1,7 @@
 package chess.model.dao
 
+import io.circe.Codec
+
 case class GameRow(
   id:              String,
   datePlayed:      String,
@@ -10,4 +12,4 @@ case class GameRow(
   timeControlName: Option[String],
   initialTimeMs:   Option[Long],
   incrementMs:     Option[Long]
-)
+) derives Codec.AsObject

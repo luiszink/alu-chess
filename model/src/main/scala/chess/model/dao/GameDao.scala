@@ -1,11 +1,11 @@
 package chess.model.dao
 
-import scala.concurrent.Future
+import cats.effect.IO
 
 trait GameDao:
-  def init(): Future[Unit]
-  def insert(row: GameRow): Future[Unit]
-  def findAll(): Future[Vector[GameRow]]
-  def findById(id: String): Future[Option[GameRow]]
-  def delete(id: String): Future[Unit]
-  def clear(): Future[Unit]
+  def init(): IO[Unit]
+  def insert(row: GameRow): IO[Unit]
+  def findAll(): IO[Vector[GameRow]]
+  def findById(id: String): IO[Option[GameRow]]
+  def delete(id: String): IO[Unit]
+  def clear(): IO[Unit]
