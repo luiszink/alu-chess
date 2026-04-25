@@ -28,6 +28,10 @@ object Pgn:
   /** Parse a PGN string and replay all moves, returning the final Game state. */
   def replayE(pgn: String): Either[ChessError, Game] = activeParser.instance.replayE(pgn)
 
+  /** Parse a PGN string and replay all moves, returning all intermediate game states. */
+  def replayAllStatesE(pgn: String): Either[ChessError, Vector[Game]] =
+    parseGameE(pgn).flatMap(PgnSharedLogic.replayAllStates)
+
   /** Export a game as PGN string. */
   def toPgn(game: Game, white: String = "White", black: String = "Black",
             event: String = "alu-chess Game", timeControl: Option[TimeControl] = None): String =

@@ -2,9 +2,10 @@ package chess.model
 
 import cats.effect.unsafe.implicits.global
 import chess.model.dao.{GameDao, GameRow}
+import java.time.LocalDateTime
 
-class PersistentGameRepository(dao: GameDao) extends GameRepository:
-  private var records: Vector[GameRecord] = Vector.empty
+class PersistentGameRepository private (dao: GameDao, initial: Vector[GameRecord]) extends GameRepository:
+  private var records: Vector[GameRecord] = initial
 
   override def save(record: GameRecord): Unit =
     records = record +: records
@@ -55,3 +56,26 @@ class PersistentGameRepository(dao: GameDao) extends GameRepository:
       initialTimeMs   = record.timeControl.map(_.initialTimeMs),
       incrementMs     = record.timeControl.map(_.incrementMs),
     )
+
+object PersistentGameRepository:
+  def apply(dao: GameDao): PersistentGameRepository =
+    val rows = dao.findAll().unsafeRunSync()
+    val records = rows.flatMap { row =>
+      Pgn.replayAllStatesE(row.pgn).toOption.map { states =>
+        val timeControl = for
+          name    <- row.timeControlName
+          initial <- row.initialTimeMs
+          incr    <- row.incrementMs
+        yield TimeControl(initial, incr, name)
+        GameRecord(
+          id          = row.id,
+          datePlayed  = LocalDateTime.parse(row.datePlayed),
+          result      = row.result,
+          timeControl = timeControl,
+          moveCount   = row.moveCount,
+          pgn         = row.pgn,
+          gameStates  = states,
+        )
+      }
+    }
+    new PersistentGameRepository(dao, records)

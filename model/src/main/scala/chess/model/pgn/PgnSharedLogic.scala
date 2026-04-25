@@ -113,6 +113,20 @@ private[model] object PgnSharedLogic:
           case None => Left(ChessError.InvalidPgnMove(idx + 1, token))
     }
 
+  /** Replay parsed SAN tokens on a new game, returning all intermediate game states. */
+  def replayAllStates(pgnGame: PgnGame): Either[ChessError, Vector[Game]] =
+    pgnGame.moves.zipWithIndex.foldLeft[Either[ChessError, Vector[Game]]](Right(Vector(Game.newGame))) {
+      case (Left(err), _) => Left(err)
+      case (Right(states), _) if states.last.status.isTerminal => Right(states)
+      case (Right(states), (token, idx)) =>
+        parseSAN(token, states.last) match
+          case Some(move) =>
+            states.last.applyMoveE(move) match
+              case Right(updated) => Right(states :+ updated)
+              case Left(_)        => Left(ChessError.InvalidPgnMove(idx + 1, token))
+          case None => Left(ChessError.InvalidPgnMove(idx + 1, token))
+    }
+
   /** Detect the result token from the end of movetext. */
   def extractResult(movetext: String): Option[String] =
     val trimmed = movetext.trim
