@@ -34,7 +34,8 @@ Inspiration: [Lichess](https://lichess.org/), aber wesentlich einfacher.
 | Coverage | sbt-scoverage 2.2.2 |
 | GUI | Scala Swing 3.0.0 |
 | REST API | Http4s 0.23 + Circe |
-| Container | Docker (Stockfish-Service) |
+| Container | Docker + Docker Compose |
+| Reverse Proxy | nginx (API Gateway für alle Services) |
 | Architektur | MVC + Observer, Multi-Module (sbt) |
 
 ---
@@ -115,6 +116,10 @@ docker compose --profile mongo up --build
 > Falls das `alu-chess-web`-Repo an einem anderen Ort liegt, absoluten Pfad angeben, z. B.
 > `FRONTEND_CONTEXT=C:/Users/name/projects/alu-chess-web`.
 
+Nach dem Start ist die gesamte Applikation unter **`http://localhost:3000`** erreichbar.
+nginx fungiert als API Gateway und leitet alle `/api/`-Requests intern weiter — die Backend-Ports
+8081, 8082 und 8083 sind vom Host aus **nicht** direkt erreichbar.
+
 Alternativ einzeln in separaten Terminals starten:
 
 ```bash
@@ -134,9 +139,10 @@ docker stop alu-stockfish
 docker rm alu-stockfish
 ```
 
-> Hinweis: Beide Services müssen parallel laufen, bevor das Web-Frontend
-> ([alu-chess-web](../SoftwarearchitekturWeb/alu-chess-web)) Anfragen an
-> Port 8081 (Controller) bzw. 8082 (Model) senden kann.
+> Hinweis: Bei lokalem sbt-Start (ohne Docker Compose) sendet das Web-Frontend
+> ([alu-chess-web](../SoftwarearchitekturWeb/alu-chess-web)) Anfragen direkt an
+> Port 8081 (Controller) bzw. 8082 (Model). Im Docker-Compose-Setup übernimmt
+> nginx das Routing — das Frontend spricht dann ausschließlich mit `localhost:3000`.
 
 ### Coverage-Report erzeugen
 
@@ -228,23 +234,27 @@ Das Projekt folgt dem **MVC-Pattern** mit **Observer** für lose Kopplung und is
 - **Controller-Modul** (`controller/`) – Koordiniert Use Cases (Zug ausführen, FEN laden, Aufgeben, Uhr, Replay). Implementiert `Observable` und hält den Spielzustand. Abhängig vom Model-Modul. Eigener REST-Service via Http4s (Port 8081).
 - **View (aview)** – Swing-GUI und TUI als `Observer` im Controller-Modul. Beide reagieren auf dieselben Controller-Events.
 - **REST APIs** – Beide Module exponieren Http4s-Endpoints. Der Controller-Service kommuniziert mit dem Model-Service per HTTP (Microservice-fähig).
+- **nginx (API Gateway)** – Im Docker-Compose-Setup fungiert nginx als einziger Einstiegspunkt (`localhost:3000`). Es leitet `/api/controller/`-Requests an den Controller-Service und `/api/model/`-Requests an den Model-Service weiter. Die Backend-Ports sind vom Host aus nicht direkt erreichbar. SSE-Verbindungen werden mit `proxy_buffering off` ungepuffert durchgeleitet.
 - **Stockfish-Service** – Separater Python/FastAPI-Service im Docker-Container. Der Model-Service leitet Engine-Requests dorthin weiter (`ENGINE_BASE_URL`, Default: `http://localhost:8000`).
 
 ### REST API Endpoints
 
-| Service | Endpoint | Beschreibung |
-|---------|----------|-------------|
-| Model (8082) | `GET /api/model/new-game` | Initiales Spielfeld |
-| Model (8082) | `POST /api/model/validate-move` | Zug validieren |
-| Model (8082) | `POST /api/model/legal-moves` | Legale Züge für Position |
-| Model (8082) | `GET /api/model/stockfish/health` | Healthcheck des Engine-Service |
-| Model (8082) | `POST /api/model/stockfish/best-move` | Besten Zug von Stockfish holen |
-| Model (8082) | `POST /api/model/stockfish/evaluate` | Stellung von Stockfish bewerten |
-| Controller (8081) | `GET /api/controller/state` | Spielzustand |
-| Controller (8081) | `POST /api/controller/move` | Zug ausführen |
-| Controller (8081) | `POST /api/controller/new-game` | Neues Spiel |
-| Controller (8081) | `GET /api/controller/events` | SSE Live-Updates |
-| Controller (8081) | … | +12 weitere Endpoints |
+Im Docker-Compose-Setup werden alle Endpoints über nginx unter `http://localhost:3000` erreichbar.
+Bei lokalem sbt-Start sind die Ports direkt verfügbar (Controller: 8081, Model: 8082).
+
+| Service | Pfad | Beschreibung |
+|---------|------|-------------|
+| Model | `GET /api/model/new-game` | Initiales Spielfeld |
+| Model | `POST /api/model/validate-move` | Zug validieren |
+| Model | `POST /api/model/legal-moves` | Legale Züge für Position |
+| Model | `GET /api/model/stockfish/health` | Healthcheck des Engine-Service |
+| Model | `POST /api/model/stockfish/best-move` | Besten Zug von Stockfish holen |
+| Model | `POST /api/model/stockfish/evaluate` | Stellung von Stockfish bewerten |
+| Controller | `GET /api/controller/state` | Spielzustand |
+| Controller | `POST /api/controller/move` | Zug ausführen |
+| Controller | `POST /api/controller/new-game` | Neues Spiel |
+| Controller | `GET /api/controller/events` | SSE Live-Updates |
+| Controller | … | +12 weitere Endpoints |
 
 Detaillierte ADRs: [`docs/architecture-decisions.md`](docs/architecture-decisions.md)
 
