@@ -92,8 +92,8 @@ object MultiGameRoutes:
       case req @ POST -> Root / "api" / "player" / "register" =>
         req.as[Json].flatMap { body =>
           playerClient.post("/api/player/register", body).flatMap {
-            case Left(e)  => InternalServerError(Json.obj("error" -> Json.fromString(e)))
-            case Right(j) => Created(j)
+            case Left((status, e)) => IO.pure(Response[IO](status = status).withEntity(e))
+            case Right(j)          => Created(j)
           }
         }
 
@@ -101,8 +101,8 @@ object MultiGameRoutes:
       case req @ POST -> Root / "api" / "player" / "session" / "hvai" =>
         req.as[Json].flatMap { body =>
           playerClient.post("/api/player/session/hvai", body).flatMap {
-            case Left(e)  => InternalServerError(Json.obj("error" -> Json.fromString(e)))
-            case Right(j) => Created(j)
+            case Left((status, e)) => IO.pure(Response[IO](status = status).withEntity(e))
+            case Right(j)          => Created(j)
           }
         }
 
@@ -110,8 +110,8 @@ object MultiGameRoutes:
       case req @ POST -> Root / "api" / "player" / "session" / "hvh" =>
         req.as[Json].flatMap { body =>
           playerClient.post("/api/player/session/hvh", body).flatMap {
-            case Left(e)  => InternalServerError(Json.obj("error" -> Json.fromString(e)))
-            case Right(j) => Created(j)
+            case Left((status, e)) => IO.pure(Response[IO](status = status).withEntity(e))
+            case Right(j)          => Created(j)
           }
         }
 
@@ -119,29 +119,29 @@ object MultiGameRoutes:
       case req @ POST -> Root / "api" / "player" / "session" / gameId / "join" =>
         req.as[Json].flatMap { body =>
           playerClient.post(s"/api/player/session/$gameId/join", body).flatMap {
-            case Left(e)  => InternalServerError(Json.obj("error" -> Json.fromString(e)))
-            case Right(j) => Ok(j)
+            case Left((status, e)) => IO.pure(Response[IO](status = status).withEntity(e))
+            case Right(j)          => Ok(j)
           }
         }
 
       // GET /api/player/{playerId}/status
       case GET -> Root / "api" / "player" / playerId / "status" =>
         playerClient.get(s"/api/player/$playerId/status").flatMap {
-          case Left(e)  => BadGateway(Json.obj("error" -> Json.fromString(e)))
-          case Right(j) => Ok(j)
+          case Left((status, e)) => IO.pure(Response[IO](status = status).withEntity(e))
+          case Right(j)          => Ok(j)
         }
 
       // GET /api/player/sessions/waiting
       case GET -> Root / "api" / "player" / "sessions" / "waiting" =>
         playerClient.get("/api/player/sessions/waiting").flatMap {
-          case Left(e)  => BadGateway(Json.obj("error" -> Json.fromString(e)))
-          case Right(j) => Ok(j)
+          case Left((status, e)) => IO.pure(Response[IO](status = status).withEntity(e))
+          case Right(j)          => Ok(j)
         }
 
       // GET /api/player/session/{gameId}
       case GET -> Root / "api" / "player" / "session" / gameId =>
         playerClient.get(s"/api/player/session/$gameId").flatMap {
-          case Left(e)  => BadGateway(Json.obj("error" -> Json.fromString(e)))
+          case Left((status, e)) => IO.pure(Response[IO](status = status).withEntity(e))
           case Right(j) => Ok(j)
         }
 

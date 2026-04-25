@@ -84,7 +84,7 @@ object ControllerServer extends IOApp:
 
           _ <- IO(ctrl.add(observer))
 
-          gameRegistry <- GameRegistry.make
+          gameRegistry <- GameRegistry.make(repo)
           playerClient  = PlayerServiceClient(httpClient)
 
           legacyRoutes = ControllerRoutes(ctrl, sseQueues)

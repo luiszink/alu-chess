@@ -104,6 +104,7 @@ class Controller(val repository: GameRepository = InMemoryGameRepository()) exte
     _game = latestGame.resign
     _gameStates = _gameStates.init :+ _game
     _browseIdx = _gameStates.size - 1
+    autoSave()
     notifyObservers()
 
   override def boardToString: String =

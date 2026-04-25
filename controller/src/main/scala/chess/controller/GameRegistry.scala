@@ -3,17 +3,18 @@ package chess.controller
 import cats.effect.*
 import cats.effect.std.Queue
 import io.circe.Json
+import chess.model.{GameRepository, InMemoryGameRepository}
 
 case class GameEntry(
   controller: Controller,
   sseQueues:  Ref[IO, List[Queue[IO, Option[Json]]]],
 )
 
-class GameRegistry(ref: Ref[IO, Map[String, GameEntry]]):
+class GameRegistry(ref: Ref[IO, Map[String, GameEntry]], repository: GameRepository):
 
   def create(gameId: String): IO[GameEntry] =
     for
-      ctrl      <- IO(Controller())
+      ctrl      <- IO(Controller(repository))
       queuesRef <- Ref.of[IO, List[Queue[IO, Option[Json]]]](Nil)
       entry      = GameEntry(ctrl, queuesRef)
       _         <- ref.update(_ + (gameId -> entry))
@@ -29,5 +30,5 @@ class GameRegistry(ref: Ref[IO, Map[String, GameEntry]]):
     ref.get.map(_.keys.toList)
 
 object GameRegistry:
-  def make: IO[GameRegistry] =
-    Ref.of[IO, Map[String, GameEntry]](Map.empty).map(new GameRegistry(_))
+  def make(repository: GameRepository): IO[GameRegistry] =
+    Ref.of[IO, Map[String, GameEntry]](Map.empty).map(new GameRegistry(_, repository))

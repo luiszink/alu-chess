@@ -88,6 +88,12 @@ services:
         condition: service_healthy
       playerservice:
         condition: service_started
+      postgres:
+        condition: service_healthy
+        required: false
+      mongo:
+        condition: service_healthy
+        required: false
 
   # ── PlayerService ──────────────────────────────────────────────
   playerservice:
