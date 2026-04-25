@@ -45,7 +45,7 @@ Inspiration: [Lichess](https://lichess.org/), aber wesentlich einfacher.
 
 - JDK 17+ (empfohlen: JDK 21)
 - sbt 1.10.x
-- Docker Desktop (für den Stockfish-Engine-Service)
+- Docker Desktop (für den Stockfish-Engine-Service und Docker Compose)
 
 ### Kompilieren
 
@@ -76,6 +76,44 @@ docker run --name alu-stockfish -d -p 8000:8000 alu-stockfish-engine:dev
 #    (Model läuft im Hintergrund auf Port 8082, Controller im Vordergrund auf Port 8081)
 sbt runAll
 ```
+
+### Docker Compose (alle Services + Frontend)
+
+Alle Services (Postgres/MongoDB, Stockfish, Model, Controller, PlayerService, Frontend) lassen sich
+per Docker Compose starten. Vorher muss `.env` konfiguriert sein:
+
+```bash
+# 1. Umgebungsvariablen einrichten
+cp .env.example .env
+# .env öffnen und mindestens FRONTEND_CONTEXT sowie DB_TYPE setzen
+```
+
+Wichtige Variablen in `.env`:
+
+| Variable | Beschreibung | Beispielwert |
+|---|---|---|
+| `DB_TYPE` | Datenbank-Backend | `memory` \| `postgres` \| `mongo` |
+| `FRONTEND_CONTEXT` | Pfad zum `alu-chess-web`-Repo (relativ oder absolut) | `../../SoftwarearchitekturWeb/alu-chess-web` |
+| `DB_URL` | JDBC-URL für PostgreSQL | `jdbc:postgresql://postgres:5432/chess` |
+| `DB_USER` | DB-Benutzer | `chess` |
+| `DB_PASSWORD` | DB-Passwort | `chess` |
+| `MONGO_URI` | MongoDB-Verbindungs-URI | `mongodb://mongo:27017` |
+| `MONGO_DB` | MongoDB-Datenbankname | `chess` |
+
+```bash
+# 2. Alle Services starten (in-memory, kein Datenbank-Profil nötig)
+docker compose up --build
+
+# Mit PostgreSQL
+docker compose --profile postgres up --build
+
+# Mit MongoDB
+docker compose --profile mongo up --build
+```
+
+> **Hinweis zu `FRONTEND_CONTEXT`:** Der Pfad wird relativ zur `docker-compose.yml` aufgelöst.
+> Falls das `alu-chess-web`-Repo an einem anderen Ort liegt, absoluten Pfad angeben, z. B.
+> `FRONTEND_CONTEXT=C:/Users/name/projects/alu-chess-web`.
 
 Alternativ einzeln in separaten Terminals starten:
 

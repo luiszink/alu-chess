@@ -75,14 +75,14 @@ services:
     environment:
       PORT:               "8081"
       PLAYER_SERVICE_URL: http://playerservice:8083
-      DB_TYPE:            ${DB_TYPE:-memory}
+      DB_TYPE:            ${DB_TYPE}
       # PostgreSQL
-      DB_URL:      ${DB_URL:-jdbc:postgresql://postgres:5432/chess}
-      DB_USER:     ${DB_USER:-chess}
-      DB_PASSWORD: ${DB_PASSWORD:-chess}
+      DB_URL:      ${DB_URL}
+      DB_USER:     ${DB_USER}
+      DB_PASSWORD: ${DB_PASSWORD}
       # MongoDB
-      MONGO_URI:   ${MONGO_URI:-mongodb://mongo:27017}
-      MONGO_DB:    ${MONGO_DB:-chess}
+      MONGO_URI:   ${MONGO_URI}
+      MONGO_DB:    ${MONGO_DB}
     depends_on:
       model:
         condition: service_healthy
@@ -106,9 +106,10 @@ services:
       PORT: "8083"
 
   # ── Frontend (React + Vite, served via nginx) ──────────────────
+  # FRONTEND_CONTEXT wird aus .env gelesen (Pfad zum alu-chess-web Repo)
   frontend:
     build:
-      context: ../../SoftwarearchitekturWeb/alu-chess-web
+      context: ${FRONTEND_CONTEXT}
       dockerfile: Dockerfile.frontend
     ports:
       - "3000:80"
