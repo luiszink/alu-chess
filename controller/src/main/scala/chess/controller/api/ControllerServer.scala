@@ -45,12 +45,10 @@ object ControllerServer extends IOApp:
   private def makeRepository: Resource[IO, GameRepository] =
     sys.env.getOrElse("DB_TYPE", "memory") match
       case "postgres" =>
-        Resource.eval(IO.blocking {
-          val url  = sys.env.getOrElse("DB_URL",      "jdbc:postgresql://localhost:5432/chess")
-          val user = sys.env.getOrElse("DB_USER",     "chess")
-          val pass = sys.env.getOrElse("DB_PASSWORD", "chess")
-          PersistentGameRepository(SlickGameDao.create(url, user, pass))
-        })
+        val url  = sys.env.getOrElse("DB_URL",      "jdbc:postgresql://localhost:5432/chess")
+        val user = sys.env.getOrElse("DB_USER",     "chess")
+        val pass = sys.env.getOrElse("DB_PASSWORD", "chess")
+        SlickGameDao.resource(url, user, pass).map(PersistentGameRepository(_))
       case "mongo" =>
         val uri    = sys.env.getOrElse("MONGO_URI", "mongodb://localhost:27017")
         val dbName = sys.env.getOrElse("MONGO_DB",  "chess")
