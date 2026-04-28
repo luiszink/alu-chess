@@ -16,7 +16,7 @@ services:
       interval: 5s
       timeout: 5s
       retries: 10
-    profiles: ["postgres", "all"]
+    profiles: ["postgres", "all", "perf"]
 
   # ── MongoDB ────────────────────────────────────────────────────
   mongo:
@@ -30,7 +30,7 @@ services:
       interval: 5s
       timeout: 5s
       retries: 10
-    profiles: ["mongo", "all"]
+    profiles: ["mongo", "all", "perf"]
 
   # ── Stockfish Engine (Python/FastAPI) ──────────────────────────
   stockfish:
@@ -76,13 +76,14 @@ services:
       PORT:               "8081"
       PLAYER_SERVICE_URL: http://playerservice:8083
       DB_TYPE:            ${DB_TYPE}
-      # PostgreSQL
-      DB_URL:      ${DB_URL}
-      DB_USER:     ${DB_USER}
-      DB_PASSWORD: ${DB_PASSWORD}
-      # MongoDB
-      MONGO_URI:   ${MONGO_URI}
-      MONGO_DB:    ${MONGO_DB}
+      # PostgreSQL — always provided so the perf benchmark module can open
+      # the connection alongside the active main DB.
+      DB_URL:      ${DB_URL:-jdbc:postgresql://postgres:5432/chess}
+      DB_USER:     ${DB_USER:-chess}
+      DB_PASSWORD: ${DB_PASSWORD:-chess}
+      # MongoDB — likewise always provided.
+      MONGO_URI:   ${MONGO_URI:-mongodb://mongo:27017}
+      MONGO_DB:    ${MONGO_DB:-chess}
     depends_on:
       model:
         condition: service_healthy

@@ -16,6 +16,7 @@ import io.circe.syntax.*
 import chess.model.*
 import chess.model.dao.{SlickGameDao, MongoGameDao}
 import chess.controller.{Controller, GameRegistry}
+import chess.controller.perf.{BenchmarkRunDaoFactory, DaoRegistry}
 import chess.util.Observer
 
 object ControllerServer extends IOApp:
@@ -61,8 +62,16 @@ object ControllerServer extends IOApp:
   override def run(args: List[String]): IO[ExitCode] =
     val port = sys.env.getOrElse("PORT", "8081").toInt
 
-    makeRepository.use { repo =>
-      EmberClientBuilder.default[IO].build.use { httpClient =>
+    val resources =
+      for
+        repo       <- makeRepository
+        httpClient <- EmberClientBuilder.default[IO].build
+        daoReg     <- DaoRegistry.make
+        runDao     <- BenchmarkRunDaoFactory.make
+        _          <- Resource.eval(runDao.init())
+      yield (repo, httpClient, daoReg, runDao)
+
+    resources.use { case (repo, httpClient, daoReg, runDao) =>
         for
           ctrl      <- IO(Controller(repo))
           sseQueues <- Ref.of[IO, List[Queue[IO, Option[Json]]]](Nil)
@@ -89,10 +98,15 @@ object ControllerServer extends IOApp:
 
           legacyRoutes = ControllerRoutes(ctrl, sseQueues)
           multiRoutes  = MultiGameRoutes(gameRegistry, playerClient)
-          combined     = legacyRoutes <+> multiRoutes
+          perfRoutes   = PerfRoutes(daoReg, runDao)
+          combined     = legacyRoutes <+> multiRoutes <+> perfRoutes
           app          = CORS.policy.withAllowOriginAll(jsonAppWithNotFound(combined))
 
-          _ <- IO.println(s"Controller-Service starting on port $port (DB_TYPE=${sys.env.getOrElse("DB_TYPE", "memory")}) ...")
+          _ <- IO.println(
+            s"Controller-Service starting on port $port " +
+            s"(DB_TYPE=${sys.env.getOrElse("DB_TYPE", "memory")}, " +
+            s"perfDaos=${daoReg.available.mkString(",")}) ..."
+          )
           _ <- EmberServerBuilder
             .default[IO]
             .withHost(host"0.0.0.0")
@@ -101,5 +115,4 @@ object ControllerServer extends IOApp:
             .build
             .useForever
         yield ExitCode.Success
-      }
     }
