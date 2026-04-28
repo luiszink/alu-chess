@@ -1,0 +1,9 @@
+# Schnelles lokales Dockerfile — kopiert das vorher mit
+#   sbt playerservice/assembly
+# gebaute Fat-JAR direkt rein. Kein sbt/download im Container.
+FROM eclipse-temurin:21-jre-alpine
+WORKDIR /app
+COPY playerservice/target/scala-3.6.4/alu-chess-playerservice-assembly-0.1.0-SNAPSHOT.jar app.jar
+EXPOSE 8083
+ENV PORT=8083
+ENTRYPOINT ["java", "-jar", "app.jar"]

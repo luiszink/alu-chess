@@ -1,0 +1,10 @@
+# Schnelles lokales Dockerfile — kopiert das vorher mit
+#   sbt model/assembly
+# gebaute Fat-JAR direkt rein. Kein sbt/download im Container.
+FROM eclipse-temurin:21-jre-alpine
+RUN apk add --no-cache curl
+WORKDIR /app
+COPY model/target/scala-3.6.4/alu-chess-model-assembly-0.1.0-SNAPSHOT.jar app.jar
+EXPOSE 8082
+ENV PORT=8082
+ENTRYPOINT ["java", "-jar", "app.jar"]

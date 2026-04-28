@@ -21,6 +21,7 @@ services:
   # ── MongoDB ────────────────────────────────────────────────────
   mongo:
     image: mongo:7-jammy
+    command: ["mongod", "--quiet"]
     ports:
       - "27017:27017"
     volumes:
@@ -91,7 +92,7 @@ services:
         condition: service_started
       postgres:
         condition: service_healthy
-        required: false
+        required: true
       mongo:
         condition: service_healthy
         required: false

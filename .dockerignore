@@ -3,6 +3,10 @@
 .idea
 .vscode
 **/target
+# Assembly-JARs für schnellen lokalen Docker-Build (docker-compose.local.yml)
+!controller/target/scala-3.6.4/*-assembly-*.jar
+!model/target/scala-3.6.4/*-assembly-*.jar
+!playerservice/target/scala-3.6.4/*-assembly-*.jar
 **/.bloop
 **/.metals
 **/.scala-build

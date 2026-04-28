@@ -1,10 +1,21 @@
 package chess.model.benchmark
 
-import io.circe.Codec
+import io.circe.{Codec, Decoder, Encoder}
 
 /** Which DAO operation to benchmark. */
-enum BenchmarkOp derives Codec.AsObject:
+enum BenchmarkOp:
   case Insert, FindAll, FindById, Delete, Mixed
+
+object BenchmarkOp:
+  /** Plain-string encoding so JSON looks like "Insert" not {"Insert":{}}.
+   *  This matches what the TypeScript frontend sends. */
+  given Codec[BenchmarkOp] = Codec.from(
+    Decoder.decodeString.emap(s =>
+      BenchmarkOp.values.find(_.toString == s)
+        .toRight(s"Unknown BenchmarkOp: $s")
+    ),
+    Encoder.encodeString.contramap(_.toString)
+  )
 
 /** User-supplied benchmark parameters.
   *

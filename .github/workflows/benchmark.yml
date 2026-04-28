@@ -1,0 +1,145 @@
+name: DAO Performance Benchmark
+
+# Nur manuell über Actions-Tab → "Run workflow" auslösbar.
+# Alle Parameter sind optional – Standardwerte ergeben einen vollständigen
+# Overnight-Run (alle 5 Operationen × 5 Record-Counts × 20 Iterationen).
+
+on:
+  workflow_dispatch:
+    inputs:
+      record_counts:
+        description: 'Record-Counts, kommagetrennt'
+        required: false
+        default: '10,50,100,500,1000'
+      operations:
+        description: 'Operationen (Insert,FindAll,FindById,Delete,Mixed)'
+        required: false
+        default: 'Insert,FindAll,FindById,Delete,Mixed'
+      iterations:
+        description: 'Gemessene Iterationen pro Benchmark'
+        required: false
+        default: '20'
+      warmup:
+        description: 'Warmup-Iterationen (werden verworfen)'
+        required: false
+        default: '3'
+
+permissions:
+  contents: read
+
+jobs:
+  benchmark:
+    name: DAO Benchmark Suite
+    runs-on: ubuntu-latest
+    timeout-minutes: 240        # 4 h — genug auch für langsame Postgres-Runs
+
+    steps:
+      # ── 1. Checkout ────────────────────────────────────────────────────────
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      # ── 2. Java + sbt ──────────────────────────────────────────────────────
+      - name: Set up JVM and sbt
+        uses: coursier/setup-action@v1
+        with:
+          jvm: temurin:21
+          apps: sbt
+
+      # ── 3. sbt-Cache ───────────────────────────────────────────────────────
+      - name: Cache sbt dependencies
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.sbt
+            ~/.ivy2/cache
+            ~/.coursier/cache
+          key: sbt-${{ hashFiles('build.sbt', 'project/*.sbt', 'project/build.properties') }}
+          restore-keys: sbt-
+
+      # ── 4. Assembly-JARs bauen ─────────────────────────────────────────────
+      - name: Build assembly JARs
+        run: sbt controller/assembly model/assembly playerservice/assembly
+
+      # ── 5. Docker-Compose: alle Dienste außer Frontend starten ─────────────
+      - name: Start services
+        env:
+          DB_TYPE:          postgres
+          DB_URL:           jdbc:postgresql://postgres:5432/chess
+          DB_USER:          chess
+          DB_PASSWORD:      chess
+          MONGO_URI:        mongodb://mongo:27017
+          MONGO_DB:         chess
+          FRONTEND_CONTEXT: /tmp   # Pflichtfeld im Compose-File, Frontend wird NICHT gestartet
+        run: |
+          docker compose \
+            -f docker-compose.yml \
+            -f .github/docker-compose.ci.yml \
+            --profile perf \
+            up -d postgres mongo stockfish playerservice model controller
+
+      # ── 6. Warten bis Controller bereit ist ────────────────────────────────
+      - name: Wait for controller
+        run: |
+          echo "Warte auf Controller: http://localhost:8081/api/perf/dao/list ..."
+          for i in $(seq 1 72); do
+            if curl -sf http://localhost:8081/api/perf/dao/list > /dev/null 2>&1; then
+              echo "✅ Controller bereit nach $((i * 5)) Sekunden"
+              echo "--- DAO-Liste ---"
+              curl -s http://localhost:8081/api/perf/dao/list | python3 -m json.tool
+              break
+            fi
+            if [ "$i" -eq 72 ]; then
+              echo "❌ Controller wurde nicht bereit (Timeout 6 min)"
+              docker compose \
+                -f docker-compose.yml \
+                -f .github/docker-compose.ci.yml \
+                --profile perf \
+                logs --tail=100
+              exit 1
+            fi
+            echo "  [$i/72] Noch nicht bereit, warte 5 s ..."
+            sleep 5
+          done
+
+      # ── 7. Benchmark-Suite ausführen ───────────────────────────────────────
+      - name: Run benchmark suite
+        env:
+          CONTROLLER_URL: http://localhost:8081
+          RECORD_COUNTS:  ${{ github.event.inputs.record_counts  || '10,50,100,500,1000' }}
+          OPERATIONS:     ${{ github.event.inputs.operations      || 'Insert,FindAll,FindById,Delete,Mixed' }}
+          ITERATIONS:     ${{ github.event.inputs.iterations      || '20' }}
+          WARMUP:         ${{ github.event.inputs.warmup          || '3' }}
+          OUTPUT_DIR:     benchmark-results
+        run: python3 scripts/run_benchmarks.py
+
+      # ── 8. Ergebnisse analysieren & CSV/Markdown erzeugen ─────────────────
+      - name: Analyze results
+        if: always()
+        run: python3 scripts/analyze_results.py benchmark-results
+
+      # ── 9. Markdown-Summary ins GitHub-Job-Summary schreiben ──────────────
+      - name: Write job summary
+        if: always()
+        run: |
+          if [ -f benchmark-results/summary.md ]; then
+            cat benchmark-results/summary.md >> "$GITHUB_STEP_SUMMARY"
+          fi
+
+      # ── 10. Artifacts hochladen (90 Tage) ──────────────────────────────────
+      - name: Upload benchmark artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: benchmark-results-${{ github.run_id }}
+          path: benchmark-results/
+          retention-days: 90
+
+      # ── 11. Service-Logs bei Fehler ausgeben ───────────────────────────────
+      - name: Dump service logs on failure
+        if: failure()
+        run: |
+          docker compose \
+            -f docker-compose.yml \
+            -f .github/docker-compose.ci.yml \
+            --profile perf \
+            logs --tail=150

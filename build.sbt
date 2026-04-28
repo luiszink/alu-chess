@@ -78,6 +78,13 @@ lazy val controller = project
       "org.http4s" %% "http4s-ember-client" % http4sVersion,
       "org.http4s" %% "http4s-circe"        % http4sVersion,
       "org.http4s" %% "http4s-dsl"          % http4sVersion,
+      // Slick + PostgreSQL (needed for perf benchmark DaoRegistry)
+      "com.typesafe.slick" %% "slick"          % slickVersion,
+      "com.typesafe.slick" %% "slick-hikaricp" % slickVersion,
+      "org.postgresql"      % "postgresql"      % "42.7.4",
+      // MongoDB (needed for perf benchmark DaoRegistry)
+      "io.github.kirill5k" %% "mongo4cats-core"  % mongo4catsVersion,
+      "io.github.kirill5k" %% "mongo4cats-circe" % mongo4catsVersion,
     ),
     coverageExcludedPackages := "chess\\.aview\\.gui\\..*;chess\\.Chess\\$package",
     coverageExcludedFiles    := ".*Chess\\.scala",
