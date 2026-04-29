@@ -92,7 +92,7 @@ services:
         condition: service_started
       postgres:
         condition: service_healthy
-        required: true
+        required: false
       mongo:
         condition: service_healthy
         required: false
