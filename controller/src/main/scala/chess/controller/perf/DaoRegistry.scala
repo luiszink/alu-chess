@@ -36,14 +36,11 @@ object DaoRegistry:
     val mongoDb  = sys.env.getOrElse("MONGO_DB",  "chess")
 
     val openPg: Resource[IO, Either[String, GameDao]] =
-      Resource.make(
-        IO.blocking(SlickGameDao.create(pgUrl.get, pgUser, pgPass))
-          .attempt
-          .map(_.left.map(_.getMessage))
-      ) {
-        case Right(d: SlickGameDao) => IO(d.close()).attempt.void
-        case _                      => IO.unit
-      }.map(_.map(identity[GameDao]))
+      SlickGameDao.resource(pgUrl.get, pgUser, pgPass)
+        .map(d => Right(d: GameDao))
+        .handleErrorWith((e: Throwable) =>
+          Resource.pure[IO, Either[String, GameDao]](Left(e.getMessage))
+        )
 
     val openMongo: Resource[IO, Either[String, GameDao]] =
       MongoGameDao.resource(mongoUri.get, mongoDb)
