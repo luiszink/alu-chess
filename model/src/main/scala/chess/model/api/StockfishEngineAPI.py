@@ -137,7 +137,7 @@ class StockfishManager:
 			raise HTTPException(status_code=422, detail="No legal move available")
 
 		info = result.info or {}
-		score_cp, mate = extract_score(info.get("score"), board.turn)
+		score_cp, mate = extract_score(info.get("score"), chess.WHITE)
 		move = to_move_dto(result.move)
 
 		return BestMoveResponse(
@@ -169,7 +169,7 @@ class StockfishManager:
 			except Exception as ex:
 				raise HTTPException(status_code=500, detail=f"Stockfish error: {ex}") from ex
 
-		score_cp, mate = extract_score(info.get("score"), board.turn)
+		score_cp, mate = extract_score(info.get("score"), chess.WHITE)
 		pv = info.get("pv") or []
 		first_move = pv[0] if pv else None
 

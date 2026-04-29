@@ -1,9 +1,7 @@
 package chess.model.dao
 
-import cats.effect.IO
+import cats.effect.{IO, Resource}
 import slick.jdbc.PostgresProfile.api.*
-import scala.concurrent.Await
-import scala.concurrent.duration.*
 
 class SlickGameDao(db: Database) extends GameDao:
   import GameTable.*
@@ -27,11 +25,11 @@ class SlickGameDao(db: Database) extends GameDao:
   override def clear(): IO[Unit] =
     IO.fromFuture(IO.delay(db.run(games.delete))).void
 
-  def close(): Unit = db.close()
-
 object SlickGameDao:
-  def create(url: String, user: String, password: String): SlickGameDao =
-    val db  = Database.forURL(url = url, user = user, password = password, driver = "org.postgresql.Driver")
-    val dao = new SlickGameDao(db)
-    Await.result(db.run(GameTable.games.schema.createIfNotExists), 30.seconds)
-    dao
+  def resource(url: String, user: String, password: String): Resource[IO, SlickGameDao] =
+    Resource
+      .make(IO.delay(Database.forURL(url, user, password, driver = "org.postgresql.Driver")))(db => IO.delay(db.close()))
+      .evalMap { db =>
+        val dao = new SlickGameDao(db)
+        dao.init().as(dao)
+      }
