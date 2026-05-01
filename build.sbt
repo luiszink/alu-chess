@@ -117,6 +117,21 @@ lazy val root = project
     Test / unmanagedSourceDirectories    := Nil,
   )
 
+// ── Benchmark module ──────────────────────────────────────────
+// JMH micro-benchmarks. Bewusst NICHT im root-aggregate, damit
+// `sbt compile` / `sbt test` die Benchmarks nicht triggern.
+// Ausführen mit: sbt "benchmark/Jmh/run"
+lazy val benchmark = project
+  .in(file("benchmark"))
+  .dependsOn(model)
+  .enablePlugins(JmhPlugin)
+  .settings(
+    name            := "alu-chess-benchmark",
+    scalaVersion    := scala3Version,
+    coverageEnabled := false,
+    publish / skip  := true,
+  )
+
 addCommandAlias(
   "runAll",
   ";model/bgRunMain chess.model.api.ModelServer" +
