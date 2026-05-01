@@ -17,7 +17,7 @@ object AlphaBeta:
   private val MaxKillerPly: Int = 64
   private val NullMoveR: Int    = 2
   private val SoftDeadlineMarginMs: Long = 10L
-  private val MaxQuiescenceDepth: Int = 10
+  private val MaxQuiescenceDepth: Int = 4
 
   /** Find the best move for the current player using iterative deepening alpha-beta. */
   def bestMove(game: Game, timeLimitMs: Long = 3000L, maxDepth: Int = 6): Option[Move] =
@@ -79,7 +79,7 @@ object AlphaBeta:
 
     while iter.hasNext && hasTimeLeft(deadline) do
       val move = iter.next()
-      game.applyMove(move) match
+      game.applyMoveSearch(move) match
         case None => ()
         case Some(next) =>
           val score = -negamax(next, depth - 1, -beta, -alpha, 1, deadline, killers, history, tt)
@@ -145,7 +145,10 @@ object AlphaBeta:
       MoveValidator.legalMoves(game.board, game.currentPlayer, game.movedPieces, game.lastMove),
       game, killers, history, ply, ttMove
     )
-    if moves.isEmpty then return terminalScore(game, ply)
+    if moves.isEmpty then
+      return if MoveValidator.isInCheck(game.board, game.currentPlayer)
+        then -(CheckmateScore - ply)
+        else 0
 
     var currentAlpha   = alpha
     var bestScore      = Int.MinValue / 2
@@ -155,7 +158,7 @@ object AlphaBeta:
 
     while iter.hasNext && !cutoff && hasTimeLeft(deadline) do
       val move = iter.next()
-      game.applyMove(move) match
+      game.applyMoveSearch(move) match
         case None => ()
         case Some(next) =>
           val score = -negamax(next, depth - 1, -beta, -currentAlpha, ply + 1, deadline, killers, history, tt)
@@ -216,13 +219,13 @@ object AlphaBeta:
 
     if tactical.isEmpty && inCheck then
       // No legal move while in check → mate
-      return terminalScore(game, ply)
+      return -(CheckmateScore - ply)
 
     var cutoff = false
     val iter   = tactical.iterator
     while iter.hasNext && !cutoff && hasTimeLeft(deadline) do
       val move = iter.next()
-      game.applyMove(move) match
+      game.applyMoveSearch(move) match
         case None => ()
         case Some(next) =>
           val score = -quiescence(next, -beta, -currentAlpha, ply + 1, deadline, qDepth + 1)
@@ -254,9 +257,7 @@ object AlphaBeta:
         && move.from.col != move.to.col)
 
   private def givesCheck(move: Move, game: Game): Boolean =
-    game.applyMove(move).exists(g =>
-      MoveValidator.isInCheck(g.board, g.currentPlayer)
-    )
+    game.applyMoveSearch(move).exists(_.status == GameStatus.Check)
 
   /** True if `color` has any piece other than king or pawn (null-move safety). */
   private def hasNonPawnMaterial(board: Board, color: Color): Boolean =

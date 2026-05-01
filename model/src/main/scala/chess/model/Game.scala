@@ -38,6 +38,54 @@ case class Game(board: Board, currentPlayer: Color, status: GameStatus, movedPie
   /** Apply a move if it passes all validations. Returns None on failure. */
   def applyMove(m: Move): Option[Game] = applyMoveE(m).toOption
 
+  /** Lightweight move application for use inside the AI search tree.
+    *
+    * Identical to applyMove but skips the MoveValidator.legalMoves call that
+    * computeUpdatedGame uses to detect checkmate/stalemate. The AI's negamax
+    * already calls legalMoves for move generation; calling it again inside
+    * applyMove doubles the cost per node. Instead:
+    *   - status is set to Check/Playing/Draw only (never Checkmate/Stalemate)
+    *   - checkmate and stalemate are detected by negamax via moves.isEmpty + isInCheck
+    *   - moveHistory is not updated (AI does not need it)
+    */
+  private[model] def applyMoveSearch(m: Move): Option[Game] =
+    for
+      piece    <- board.cell(m.from)
+      if piece.color == currentPlayer
+      if !board.cell(m.to).exists(_.color == currentPlayer)
+      if MoveValidator.isValidMove(m, board, movedPieces, lastMove)
+      newBoard <- board.move(m)
+      fullBoard = MoveValidator.applyMoveEffects(m, board, newBoard)
+      if !MoveValidator.isInCheck(fullBoard, currentPlayer)
+    yield
+      val isPawnMove      = piece match { case Piece.Pawn(_) => true; case _ => false }
+      val isCap           = board.cell(m.to).isDefined ||
+                              (isPawnMove && m.from.col != m.to.col && board.cell(m.to).isEmpty)
+      val opponent        = currentPlayer.opposite
+      val newMovedPieces  = movedPieces + m.from
+      val newHalfMoveClock = if isPawnMove || isCap then 0 else halfMoveClock + 1
+      val currentKey      = repetitionKey(board, currentPlayer, movedPieces, lastMove)
+      val histKeys        = if repetitionKeys.nonEmpty then repetitionKeys else Vector(currentKey)
+      val nextKey         = repetitionKey(fullBoard, opponent, newMovedPieces, Some(m))
+      val newRepetitionKeys = histKeys :+ nextKey
+      val repetitionCount = newRepetitionKeys.count(_ == nextKey)
+      val opponentInCheck = MoveValidator.isInCheck(fullBoard, opponent)
+      val newStatus =
+        if repetitionCount >= 3                              then GameStatus.Draw
+        else if MoveValidator.isInsufficientMaterial(fullBoard) then GameStatus.Draw
+        else if newHalfMoveClock >= 100                      then GameStatus.Draw
+        else if opponentInCheck                              then GameStatus.Check
+        else GameStatus.Playing
+      copy(
+        board          = fullBoard,
+        currentPlayer  = opponent,
+        status         = newStatus,
+        movedPieces    = newMovedPieces,
+        lastMove       = Some(m),
+        halfMoveClock  = newHalfMoveClock,
+        repetitionKeys = newRepetitionKeys
+      )
+
   private def computeUpdatedGame(m: Move, fullBoard: Board, piece: Piece): Game =
     val isPawnMove = piece match { case Piece.Pawn(_) => true; case _ => false }
     val isCapture = board.cell(m.to).isDefined ||

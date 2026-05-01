@@ -15,7 +15,7 @@ object Fen:
     *
     * Note: this is intentional shared mutable state for interactive, single-threaded
     * use (CLI / TUI / GUI). Do not modify concurrently from multiple threads. */
-  var activeParser: FenParserType = FenParserType.Fast
+  var activeParser: FenParserType = FenParserType.Regex
 
   /** Parse a FEN string into a Game. Returns Left with error detail on failure. */
   def parseE(fen: String): Either[ChessError, Game] = activeParser.instance.parseE(fen)
