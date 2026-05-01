@@ -7,6 +7,7 @@ COPY . .
 RUN sbt controller/assembly
 
 FROM eclipse-temurin:21-jre-alpine
+RUN apk add --no-cache curl
 WORKDIR /app
 COPY --from=builder /app/controller/target/scala-3.6.4/alu-chess-controller-assembly-*.jar app.jar
 EXPOSE 8081

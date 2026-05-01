@@ -7,6 +7,7 @@ COPY . .
 RUN sbt playerservice/assembly
 
 FROM eclipse-temurin:21-jre-alpine
+RUN apk add --no-cache curl
 WORKDIR /app
 COPY --from=builder /app/playerservice/target/scala-3.6.4/alu-chess-playerservice-assembly-*.jar app.jar
 EXPOSE 8083
