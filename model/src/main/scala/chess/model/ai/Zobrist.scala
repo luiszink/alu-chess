@@ -35,10 +35,16 @@ object Zobrist:
 
   /** Compute the Zobrist key for a position. */
   def hash(game: Game): Long =
+    hashRaw(game.board, game.currentPlayer, game.movedPieces, game.lastMove)
+
+  /** Compute the Zobrist key directly from the position fields, without
+    * constructing a throw-away `Game`. Used on the hot path inside the
+    * AI search (per-node repetition-key computation). */
+  def hashRaw(board: Board, currentPlayer: Color,
+              movedPieces: Set[Position], lastMove: Option[Move]): Long =
     var key = 0L
 
     // Pieces
-    val board = game.board
     var r = 0
     while r < 8 do
       var c = 0
@@ -50,25 +56,24 @@ object Zobrist:
       r += 1
 
     // Side to move
-    if game.currentPlayer == Color.Black then key ^= blackToMove
+    if currentPlayer == Color.Black then key ^= blackToMove
 
     // Castling rights (derived from movedPieces and actual occupancy)
-    val mp = game.movedPieces
     // White king on e1, rook h1 → WK; rook a1 → WQ
-    if !mp.contains(Position(0, 4)) && board.cell(0, 4).contains(Piece.King(Color.White)) then
-      if !mp.contains(Position(0, 7)) && board.cell(0, 7).contains(Piece.Rook(Color.White)) then
+    if !movedPieces.contains(Position(0, 4)) && board.cell(0, 4).contains(Piece.King(Color.White)) then
+      if !movedPieces.contains(Position(0, 7)) && board.cell(0, 7).contains(Piece.Rook(Color.White)) then
         key ^= castling(0)
-      if !mp.contains(Position(0, 0)) && board.cell(0, 0).contains(Piece.Rook(Color.White)) then
+      if !movedPieces.contains(Position(0, 0)) && board.cell(0, 0).contains(Piece.Rook(Color.White)) then
         key ^= castling(1)
-    if !mp.contains(Position(7, 4)) && board.cell(7, 4).contains(Piece.King(Color.Black)) then
-      if !mp.contains(Position(7, 7)) && board.cell(7, 7).contains(Piece.Rook(Color.Black)) then
+    if !movedPieces.contains(Position(7, 4)) && board.cell(7, 4).contains(Piece.King(Color.Black)) then
+      if !movedPieces.contains(Position(7, 7)) && board.cell(7, 7).contains(Piece.Rook(Color.Black)) then
         key ^= castling(2)
-      if !mp.contains(Position(7, 0)) && board.cell(7, 0).contains(Piece.Rook(Color.Black)) then
+      if !movedPieces.contains(Position(7, 0)) && board.cell(7, 0).contains(Piece.Rook(Color.Black)) then
         key ^= castling(3)
 
     // En-passant file only if the right is position-relevant (a capture is possible)
-    game.lastMove match
-      case Some(m) if isDoublePawnPush(m, board) && hasRelevantEnPassant(game, m) =>
+    lastMove match
+      case Some(m) if isDoublePawnPush(m, board) && hasRelevantEnPassantRaw(board, currentPlayer, m) =>
         key ^= epFile(m.to.col)
       case _                                     => ()
 
@@ -79,9 +84,7 @@ object Zobrist:
       case Some(Piece.Pawn(_)) => math.abs(m.to.row - m.from.row) == 2
       case _                   => false
 
-  private def hasRelevantEnPassant(game: Game, m: Move): Boolean =
-    val board = game.board
-    val sideToMove = game.currentPlayer
+  private def hasRelevantEnPassantRaw(board: Board, sideToMove: Color, m: Move): Boolean =
     val pawnRow = m.to.row
     val file = m.to.col
 

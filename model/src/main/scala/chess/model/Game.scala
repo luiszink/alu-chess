@@ -7,7 +7,7 @@ enum GameStatus:
     case Checkmate | Stalemate | Resigned | Draw | TimeOut => true
     case _ => false
 
-case class Game(board: Board, currentPlayer: Color, status: GameStatus, movedPieces: Set[Position] = Set.empty, lastMove: Option[Move] = None, halfMoveClock: Int = 0, moveHistory: Vector[MoveEntry] = Vector.empty, fullMoveNumber: Int = 1, repetitionKeys: Vector[String] = Vector.empty):
+case class Game(board: Board, currentPlayer: Color, status: GameStatus, movedPieces: Set[Position] = Set.empty, lastMove: Option[Move] = None, halfMoveClock: Int = 0, moveHistory: Vector[MoveEntry] = Vector.empty, fullMoveNumber: Int = 1, repetitionKeys: Vector[Long] = Vector.empty):
 
   def switchPlayer: Game =
     copy(currentPlayer = currentPlayer.opposite)
@@ -125,9 +125,8 @@ case class Game(board: Board, currentPlayer: Color, status: GameStatus, movedPie
     currentPlayer: Color,
     movedPieces: Set[Position],
     lastMove: Option[Move]
-  ): String =
-    val gameForFen = Game(board, currentPlayer, GameStatus.Playing, movedPieces, lastMove)
-    Fen.toFen(gameForFen).split(" ").take(4).mkString(" ")
+  ): Long =
+    chess.model.ai.Zobrist.hashRaw(board, currentPlayer, movedPieces, lastMove)
 
   def resign: Game =
     copy(status = GameStatus.Resigned)

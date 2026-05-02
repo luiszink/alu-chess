@@ -257,7 +257,11 @@ object AlphaBeta:
         && move.from.col != move.to.col)
 
   private def givesCheck(move: Move, game: Game): Boolean =
-    game.applyMoveSearch(move).exists(_.status == GameStatus.Check)
+    game.board.move(move) match
+      case Some(newBoard) =>
+        val full = MoveValidator.applyMoveEffects(move, game.board, newBoard)
+        MoveValidator.isInCheck(full, game.currentPlayer.opposite)
+      case None => false
 
   /** True if `color` has any piece other than king or pawn (null-move safety). */
   private def hasNonPawnMaterial(board: Board, color: Color): Boolean =
@@ -291,7 +295,14 @@ object AlphaBeta:
     System.nanoTime() < deadline
 
   private def isRepetition(game: Game): Boolean =
-    game.repetitionKeys.nonEmpty && {
-      val current = game.repetitionKeys.last
-      game.repetitionKeys.init.contains(current)
-    }
+    val keys = game.repetitionKeys
+    if keys.isEmpty then false
+    else
+      val current = keys.last
+      var i = 0
+      val n = keys.length - 1
+      var found = false
+      while i < n && !found do
+        if keys(i) == current then found = true
+        i += 1
+      found

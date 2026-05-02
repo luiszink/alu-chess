@@ -97,113 +97,119 @@ object Evaluator:
   )
 
   /** Evaluate board position from White's perspective (centipawns).
-    * Caller must handle terminal positions (checkmate/stalemate) before calling this. */
+    * Caller must handle terminal positions (checkmate/stalemate) before calling this.
+    *
+    * Implementation: a single 64-cell pass accumulates piece values + non-king PST,
+    * non-pawn material (for endgame detection), bishop counts, pawn columns, and
+    * pawn positions. After the pass, king PST (which depends on the endgame flag)
+    * and pawn-structure bonuses are added in O(8) + O(pawns). */
   def evaluate(board: Board): Int =
-    val endgame = isEndgame(board)
     var score = 0
-    var r = 0
-    while r < 8 do
-      var c = 0
-      while c < 8 do
-        board.cell(r, c) match
-          case None => ()
-          case Some(piece) =>
-            val sign     = if piece.color == Color.White then 1 else -1
-            val tableRow = if piece.color == Color.White then r else 7 - r
-            val pst      = pstFor(piece, endgame)
-            score += sign * (pieceValue(piece) + pst(tableRow)(c))
-        c += 1
-      r += 1
-    score + bonuses(board)
-
-  private def isEndgame(board: Board): Boolean =
     var nonPawnMaterial = 0
-    var r = 0
-    while r < 8 do
-      var c = 0
-      while c < 8 do
-        board.cell(r, c) match
-          case Some(piece) =>
-            piece match
-              case Piece.King(_) | Piece.Pawn(_) => ()
-              case p => nonPawnMaterial += pieceValue(p)
-          case None => ()
-        c += 1
-      r += 1
-    nonPawnMaterial < 1300
-
-  private def pstFor(piece: Piece, endgame: Boolean): Array[Array[Int]] = piece match
-    case Piece.Pawn(_)   => PawnTable
-    case Piece.Knight(_) => KnightTable
-    case Piece.Bishop(_) => BishopTable
-    case Piece.Rook(_)   => RookTable
-    case Piece.Queen(_)  => QueenTable
-    case Piece.King(_)   => if endgame then KingEndTable else KingMidTable
-
-  private def bonuses(board: Board): Int =
-    var score = 0
     var whiteBishops = 0
     var blackBishops = 0
-    val whitePawnCols = Array.fill(8)(0)
-    val blackPawnCols = Array.fill(8)(0)
+    val whitePawnCols = new Array[Int](8)
+    val blackPawnCols = new Array[Int](8)
+    val whitePawns    = new Array[Int](16) // packed row*8+col
+    val blackPawns    = new Array[Int](16)
+    var whitePawnCount = 0
+    var blackPawnCount = 0
+    var whiteKingRow = -1
+    var whiteKingCol = -1
+    var blackKingRow = -1
+    var blackKingCol = -1
 
     var r = 0
     while r < 8 do
       var c = 0
       while c < 8 do
         board.cell(r, c) match
-          case Some(Piece.Bishop(Color.White)) => whiteBishops += 1
-          case Some(Piece.Bishop(Color.Black)) => blackBishops += 1
-          case Some(Piece.Pawn(Color.White))   => whitePawnCols(c) += 1
-          case Some(Piece.Pawn(Color.Black))   => blackPawnCols(c) += 1
-          case _ => ()
+          case None => ()
+          case Some(piece) =>
+            val white    = piece.color == Color.White
+            val sign     = if white then 1 else -1
+            val tableRow = if white then r else 7 - r
+            score += sign * pieceValue(piece)
+            piece match
+              case Piece.Pawn(_) =>
+                score += sign * PawnTable(tableRow)(c)
+                if white then
+                  whitePawnCols(c) += 1
+                  whitePawns(whitePawnCount) = r * 8 + c
+                  whitePawnCount += 1
+                else
+                  blackPawnCols(c) += 1
+                  blackPawns(blackPawnCount) = r * 8 + c
+                  blackPawnCount += 1
+              case Piece.Knight(_) =>
+                score += sign * KnightTable(tableRow)(c)
+                nonPawnMaterial += pieceValue(piece)
+              case Piece.Bishop(_) =>
+                score += sign * BishopTable(tableRow)(c)
+                nonPawnMaterial += pieceValue(piece)
+                if white then whiteBishops += 1 else blackBishops += 1
+              case Piece.Rook(_) =>
+                score += sign * RookTable(tableRow)(c)
+                nonPawnMaterial += pieceValue(piece)
+              case Piece.Queen(_) =>
+                score += sign * QueenTable(tableRow)(c)
+                nonPawnMaterial += pieceValue(piece)
+              case Piece.King(_) =>
+                if white then
+                  whiteKingRow = r; whiteKingCol = c
+                else
+                  blackKingRow = r; blackKingCol = c
         c += 1
       r += 1
 
-    // Bishop pair bonus
+    // King PST is endgame-dependent, so applied after non-pawn material is known.
+    val kingTable = if nonPawnMaterial < 1300 then KingEndTable else KingMidTable
+    if whiteKingRow >= 0 then score += kingTable(whiteKingRow)(whiteKingCol)
+    if blackKingRow >= 0 then score -= kingTable(7 - blackKingRow)(blackKingCol)
+
+    // Bishop pair
     if whiteBishops >= 2 then score += 30
     if blackBishops >= 2 then score -= 30
 
-    // Doubled pawn penalty (-10cp per extra pawn on the same file)
+    // Doubled + isolated pawns (per file)
     var c = 0
     while c < 8 do
-      if whitePawnCols(c) > 1 then score -= 10 * (whitePawnCols(c) - 1)
-      if blackPawnCols(c) > 1 then score += 10 * (blackPawnCols(c) - 1)
-      c += 1
-
-    // Isolated pawn penalty (-10cp per pawn with no friendly pawns on adjacent files)
-    c = 0
-    while c < 8 do
+      val wCol = whitePawnCols(c)
+      val bCol = blackPawnCols(c)
+      if wCol > 1 then score -= 10 * (wCol - 1)
+      if bCol > 1 then score += 10 * (bCol - 1)
       val wLeft  = if c > 0 then whitePawnCols(c - 1) else 0
       val wRight = if c < 7 then whitePawnCols(c + 1) else 0
-      if whitePawnCols(c) > 0 && wLeft == 0 && wRight == 0 then score -= 10
+      if wCol > 0 && wLeft == 0 && wRight == 0 then score -= 10
       val bLeft  = if c > 0 then blackPawnCols(c - 1) else 0
       val bRight = if c < 7 then blackPawnCols(c + 1) else 0
-      if blackPawnCols(c) > 0 && bLeft == 0 && bRight == 0 then score += 10
+      if bCol > 0 && bLeft == 0 && bRight == 0 then score += 10
       c += 1
 
-    // Passed pawn bonus (approximate: no opposing pawns on same or adjacent files)
-    r = 0
-    while r < 8 do
-      c = 0
-      while c < 8 do
-        board.cell(r, c) match
-          case Some(Piece.Pawn(Color.White)) =>
-            val noOpposing =
-              blackPawnCols(c) == 0 &&
-              (if c > 0 then blackPawnCols(c - 1) == 0 else true) &&
-              (if c < 7 then blackPawnCols(c + 1) == 0 else true)
-            if noOpposing then
-              score += (if r >= 5 then 50 else if r >= 4 then 30 else if r >= 3 then 20 else 0)
-          case Some(Piece.Pawn(Color.Black)) =>
-            val noOpposing =
-              whitePawnCols(c) == 0 &&
-              (if c > 0 then whitePawnCols(c - 1) == 0 else true) &&
-              (if c < 7 then whitePawnCols(c + 1) == 0 else true)
-            if noOpposing then
-              score -= (if r <= 2 then 50 else if r <= 3 then 30 else if r <= 4 then 20 else 0)
-          case _ => ()
-        c += 1
-      r += 1
+    // Passed pawns (no opposing pawn on same or adjacent files)
+    var i = 0
+    while i < whitePawnCount do
+      val pos = whitePawns(i)
+      val pr  = pos >>> 3
+      val pc  = pos & 7
+      val noOpposing =
+        blackPawnCols(pc) == 0 &&
+          (pc <= 0 || blackPawnCols(pc - 1) == 0) &&
+          (pc >= 7 || blackPawnCols(pc + 1) == 0)
+      if noOpposing then
+        score += (if pr >= 5 then 50 else if pr >= 4 then 30 else if pr >= 3 then 20 else 0)
+      i += 1
+    i = 0
+    while i < blackPawnCount do
+      val pos = blackPawns(i)
+      val pr  = pos >>> 3
+      val pc  = pos & 7
+      val noOpposing =
+        whitePawnCols(pc) == 0 &&
+          (pc <= 0 || whitePawnCols(pc - 1) == 0) &&
+          (pc >= 7 || whitePawnCols(pc + 1) == 0)
+      if noOpposing then
+        score -= (if pr <= 2 then 50 else if pr <= 3 then 30 else if pr <= 4 then 20 else 0)
+      i += 1
 
     score
