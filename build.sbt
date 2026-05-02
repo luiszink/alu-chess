@@ -1,3 +1,7 @@
+// Explizite Imports, da gatling-sbt sbt-assembly transitiv mitbringt
+// und beide Plugins "assembly" / "assemblyMergeStrategy" in den Scope importieren.
+import sbtassembly.AssemblyPlugin.autoImport.{assembly, assemblyMergeStrategy}
+
 val scala3Version = "3.6.4"
 
 val http4sVersion = "0.23.30"
@@ -131,6 +135,25 @@ lazy val benchmark = project
     coverageEnabled := false,
     publish / skip  := true,
   )
+
+// ── Gatling module ────────────────────────────────────────
+// HTTP-Lasttests, die die k6-Skripte in Gatling-Scala-DSL spiegeln.
+// Bewusst NICHT im root-aggregate. Ausführen mit: sbt gatlingAll
+lazy val gatling = project
+  .in(file("gatling"))
+  .enablePlugins(GatlingPlugin)
+  .settings(
+    name            := "alu-chess-gatling",
+    scalaVersion    := scala3Version,
+    coverageEnabled := false,
+    publish / skip  := true,
+    libraryDependencies ++= Seq(
+      "io.gatling.highcharts" % "gatling-charts-highcharts" % "3.11.5" % "test,it",
+      "io.gatling"            % "gatling-test-framework"    % "3.11.5" % "test,it",
+    ),
+  )
+
+addCommandAlias("gatlingAll", "gatling/Gatling/test")
 
 addCommandAlias(
   "runAll",
