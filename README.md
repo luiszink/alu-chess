@@ -97,7 +97,7 @@ Wichtige Variablen in `.env`:
 | `FRONTEND_CONTEXT` | Pfad zum `alu-chess-web`-Repo (relativ oder absolut) | `../../SoftwarearchitekturWeb/alu-chess-web` |
 | `DB_URL` | JDBC-URL für PostgreSQL | `jdbc:postgresql://postgres:5432/chess` |
 | `DB_USER` | DB-Benutzer | `chess` |
-| `DB_PASSWORD` | DB-Passwort | `chess` |
+| `DB_PASSWORD` | DB-Passwort | `Password` |
 | `MONGO_URI` | MongoDB-Verbindungs-URI | `mongodb://mongo:27017` |
 | `MONGO_DB` | MongoDB-Datenbankname | `chess` |
 
@@ -196,34 +196,41 @@ oder per Docker gestartet werden.
 
 Skripte liegen in [`k6/scripts/`](k6/scripts/).
 
+Der Standard-`BASE_URL` ist bereits `http://localhost:3000` — `--env` ist nur nötig, wenn ein anderer Host verwendet wird.
+
 ```bash
-# Alle Services testen (Smoke + Load + Ramp)
-k6 run k6/scripts/all.js --env BASE_URL=http://localhost:3000
+# Alle Services testen (Smoke + Load + Ramp, inkl. Multi-Game)
+k6 run k6/scripts/all.js
 
 # Einzelne Services
-k6 run k6/scripts/model.js      --env BASE_URL=http://localhost:3000
-k6 run k6/scripts/controller.js --env BASE_URL=http://localhost:3000
-k6 run k6/scripts/player.js     --env BASE_URL=http://localhost:3000
-k6 run k6/scripts/stockfish.js  --env BASE_URL=http://localhost:3000
+k6 run k6/scripts/model.js
+k6 run k6/scripts/controller.js
+k6 run k6/scripts/player.js
+k6 run k6/scripts/stockfish.js
+k6 run k6/scripts/multi-game.js
 
 # Schneller Smoke-Test
-k6 run k6/scripts/smoke.js      --env BASE_URL=http://localhost:3000
+k6 run k6/scripts/smoke.js
+
+# Andere BASE_URL (optional)
+k6 run k6/scripts/all.js --env BASE_URL=http://meinserver:3000
 
 # Über Docker Compose (kein lokales k6 nötig)
 docker compose --profile k6 run --rm k6
 docker compose --profile k6 run --rm k6 run /scripts/controller.js
 ```
 
-| Skript | Szenario | VUs | Dauer |
-|---|---|---|---|
-| `smoke.js` | Smoke | 1 | 10 s |
-| `model.js` | Smoke + Load | 1 / 10 | 10 s + 30 s |
-| `controller.js` | Smoke + Load | 1 / 10 | 10 s + 30 s |
-| `player.js` | Smoke + Load | 1 / 10 | 10 s + 30 s |
-| `stockfish.js` | Smoke + Load | 1 / 5 | 10 s + 30 s |
-| `all.js` | Smoke + Load + Ramp | alle Services | ~2 min |
+| Skript | Testet | Szenario | VUs | Dauer |
+|---|---|---|---|---|
+| `smoke.js` | alle Services | Smoke | 1 | 10 s |
+| `model.js` | Model-Service | Smoke + Load | 1 / 10 | 10 s + 30 s |
+| `controller.js` | Controller-Service | Smoke + Load | 1 / 10 | 10 s + 30 s |
+| `player.js` | Player-Service | Smoke + Load | 1 / 10 | 10 s + 30 s |
+| `stockfish.js` | Stockfish via Model | Smoke + Load | 1 / 5 | 10 s + 30 s |
+| `multi-game.js` | Multi-Game Endpoints (`/game/{id}/…`) | Smoke + Load | 1 / 10 | 10 s + 30 s |
+| `all.js` | alle 5 Services + Controller-Ramp | Smoke + Load + Ramp | alle | ~2 min |
 
-**Thresholds:** Fehlerrate < 1 %, Smoke p95 < 300 ms, Load p95 < 500 ms, Stockfish p95 < 5000 ms.
+**Thresholds:** Fehlerrate < 1 %, Smoke p95 < 300 ms, Load p95 < 500 ms, Stockfish p95 < 5000 ms, Controller-Ramp p95 < 800 ms.
 
 ---
 
@@ -274,64 +281,160 @@ Das Projekt ist als **sbt Multi-Module Build** organisiert:
 
 ```
 alu-chess/
-├── build.sbt                          # Root-Build mit Modul-Definitionen
-├── Dockerfile                         # Container-Build für FastAPI + Stockfish
-├── requirements.txt                   # Python-Abhängigkeiten für Engine-Service
-├── model/                             # Model-Modul (reine Domain-Logik)
-│   └── src/main/scala/chess/
-│       ├── model/
-│       │   ├── Board.scala            # Spielfeld (8×8, immutable)
-│       │   ├── Game.scala             # Spielzustand, Zugausführung, Statusprüfung
-│       │   ├── Piece.scala            # Figurtypen und Farben (enum)
-│       │   ├── Position.scala         # Feld auf dem Brett (algebraische Notation)
-│       │   ├── Move.scala             # Zug-Datentyp mit Promotion, String-Parsing
-│       │   ├── MoveValidator.scala    # Zugvalidierung, Schach-Erkennung, legale Züge
-│       │   ├── Fen.scala              # FEN-Parser und -Serializer
-│       │   ├── MoveEntry.scala        # Zugeintrag mit SAN-Notation
-│       │   ├── ChessClock.scala       # Schachuhr mit Zeitkontrollen
-│       │   ├── ChessError.scala       # Typisierte Fehlermeldungen (enum)
-│       │   ├── GameJson.scala         # JSON-Serialisierung (Circe)
-│       │   ├── GameRecord.scala       # Abgeschlossene Partie (PGN, Züge, Ergebnis)
-│       │   ├── GameRepository.scala   # Repository-Trait für Partie-Archiv
-│       │   ├── InMemoryGameRepository.scala
-│       │   ├── TestPositions.scala    # Vordefinierte Teststellungen
-│       │   ├── fen/                   # FEN-Parser-Strategien (Regex, Combinator, Fast)
-│       │   ├── pgn/                   # PGN-Parser-Strategien (Regex, Combinator, Fast)
-│       │   └── api/
-│       │       ├── ModelRoutes.scala      # REST-Endpoints inkl. Stockfish-Proxy (Port 8082)
-│       │       ├── ModelServer.scala      # Http4s-Server (IOApp)
-│       │       └── StockfishEngineAPI.py  # FastAPI-Engine-Service (Port 8000)
-│       └── util/
-│           ├── Observable.scala       # Observer-Pattern (Trait)
-│           └── Observer.scala         # Observer-Interface
-├── controller/                        # Controller-Modul (hängt von model ab)
-│   └── src/main/scala/chess/
-│       ├── Chess.scala                # Entry Point (@main aluChess)
-│       ├── controller/
-│       │   ├── Controller.scala       # Use-Case-Koordination, Observable
-│       │   ├── ControllerInterface.scala
-│       │   └── api/
-│       │       ├── ControllerRoutes.scala  # REST-Endpoints (Port 8081)
-│       │       └── ControllerServer.scala  # Http4s-Server (IOApp)
-│       └── aview/
-│           ├── TUI.scala              # Text User Interface (Observer)
-│           └── gui/                   # Swing-GUI im Lichess-Stil
-│               ├── SwingGUI.scala
-│               ├── BoardPanel.scala
-│               ├── SidePanel.scala
-│               ├── NavBar.scala
-│               ├── HistoryPanel.scala
-│               ├── HistoryListPanel.scala
-│               ├── ClockPanel.scala
-│               ├── StartPanel.scala
-│               └── PromotionDialog.scala
-└── docs/                              # Dokumentation
+├── build.sbt                          # Root-Build (alle Module + Command Aliases)
+├── docker-compose.yml                 # Alle Services + Profile (postgres, mongo, k6)
+├── Dockerfile.controller              # Controller-Service Image
+├── Dockerfile.model                   # Model-Service Image
+├── Dockerfile.playerservice           # PlayerService Image
+├── Dockerfile.stockfish               # Stockfish/FastAPI Image
+├── requirements.txt                   # Python-Abhängigkeiten für Stockfish-Service
+├── .env.example                       # Vorlage für Umgebungsvariablen
+├── project/
+│   ├── plugins.sbt                    # sbt-Plugins (scoverage, assembly, jmh, gatling)
+│   └── build.properties               # sbt-Version
+│
+├── model/                             # Model-Modul (reine Domain-Logik, Port 8082)
+│   └── src/
+│       ├── main/scala/chess/
+│       │   ├── model/
+│       │   │   ├── Board.scala            # Spielfeld (8×8, immutable)
+│       │   │   ├── Game.scala             # Spielzustand, Zugausführung, Statusprüfung
+│       │   │   ├── Piece.scala            # Figurtypen und Farben (enum)
+│       │   │   ├── Position.scala         # Feld auf dem Brett (algebraische Notation)
+│       │   │   ├── Move.scala             # Zug-Datentyp mit Promotion, String-Parsing
+│       │   │   ├── MoveValidator.scala    # Zugvalidierung, Schach-Erkennung, legale Züge
+│       │   │   ├── Fen.scala              # FEN-Serializer (wählt Parser-Strategie)
+│       │   │   ├── FenParserType.scala    # Enum: Regex | Combinator | Fast
+│       │   │   ├── Pgn.scala              # PGN-Serializer (wählt Parser-Strategie)
+│       │   │   ├── PgnParserType.scala    # Enum: Regex | Combinator | Fast
+│       │   │   ├── MoveEntry.scala        # Zugeintrag mit SAN-Notation
+│       │   │   ├── ChessClock.scala       # Schachuhr mit Zeitkontrollen
+│       │   │   ├── ChessError.scala       # Typisierte Fehlermeldungen (enum)
+│       │   │   ├── GameJson.scala         # JSON-Serialisierung (Circe)
+│       │   │   ├── GameRecord.scala       # Abgeschlossene Partie (PGN, Züge, Ergebnis)
+│       │   │   ├── GameScript.scala       # Skript-basierte Partie-Ausführung
+│       │   │   ├── GameRepository.scala   # Repository-Trait für Partie-Archiv
+│       │   │   ├── InMemoryGameRepository.scala
+│       │   │   ├── PersistentGameRepository.scala  # DB-Implementierung (Slick/Mongo)
+│       │   │   ├── TestPositions.scala    # Vordefinierte Teststellungen
+│       │   │   ├── ai/                    # Interne Alpha-Beta-KI
+│       │   │   │   ├── ChessAI.scala      # Einstiegspunkt (wählt Modus)
+│       │   │   │   ├── AlphaBeta.scala    # Alpha-Beta-Suche mit Transpositionstabelle
+│       │   │   │   ├── Evaluator.scala    # Statische Stellungsbewertung
+│       │   │   │   ├── MoveOrderer.scala  # Zugordnung (MVV-LVA, killer moves)
+│       │   │   │   ├── TranspositionTable.scala
+│       │   │   │   ├── Zobrist.scala      # Zobrist-Hashing für Board-States
+│       │   │   │   └── AIMode.scala       # Enum: Internal | Stockfish
+│       │   │   ├── fen/                   # FEN-Parser-Strategien
+│       │   │   │   ├── FenParser.scala    # Trait
+│       │   │   │   ├── RegexFenParser.scala
+│       │   │   │   ├── CombinatorFenParser.scala
+│       │   │   │   ├── FastFenParser.scala
+│       │   │   │   └── FenSharedLogic.scala
+│       │   │   ├── pgn/                   # PGN-Parser-Strategien
+│       │   │   │   ├── PgnParser.scala    # Trait
+│       │   │   │   ├── RegexPgnParser.scala
+│       │   │   │   ├── CombinatorPgnParser.scala
+│       │   │   │   ├── FastPgnParser.scala
+│       │   │   │   ├── PgnSharedLogic.scala
+│       │   │   │   └── PgnGame.scala
+│       │   │   ├── dao/                   # Datenbankzugriff
+│       │   │   │   ├── GameDao.scala      # Trait
+│       │   │   │   ├── SlickGameDao.scala # PostgreSQL (Slick)
+│       │   │   │   ├── MongoGameDao.scala # MongoDB (mongo4cats)
+│       │   │   │   ├── GameRow.scala
+│       │   │   │   └── GameTable.scala
+│       │   │   └── api/
+│       │   │       ├── ModelRoutes.scala      # REST-Endpoints inkl. Stockfish-Proxy
+│       │   │       ├── ModelServer.scala      # Http4s-Server (IOApp)
+│       │   │       └── StockfishEngineAPI.py  # FastAPI-Engine-Service (Port 8000)
+│       │   └── util/
+│       │       ├── Observable.scala       # Observer-Pattern (Trait)
+│       │       └── Observer.scala
+│       └── test/scala/chess/model/        # ScalaTest-Specs (je Klasse eine Spec)
+│
+├── controller/                        # Controller-Modul (hängt von model ab, Port 8081)
+│   └── src/
+│       ├── main/scala/chess/
+│       │   ├── Chess.scala                # Entry Point (@main aluChess)
+│       │   ├── controller/
+│       │   │   ├── Controller.scala       # Use-Case-Koordination, Observable
+│       │   │   ├── ControllerInterface.scala
+│       │   │   ├── GameRegistry.scala     # Multi-Game-Verwaltung (concurrent Map)
+│       │   │   └── api/
+│       │   │       ├── ControllerRoutes.scala   # Einzelspiel-Endpoints
+│       │   │       ├── MultiGameRoutes.scala    # Multi-Game-Endpoints (/game/{id}/…)
+│       │   │       ├── PlayerServiceClient.scala # HTTP-Client zum PlayerService
+│       │   │       └── ControllerServer.scala
+│       │   └── aview/
+│       │       ├── TUI.scala              # Text User Interface (Observer)
+│       │       └── gui/                   # Swing-GUI im Lichess-Stil
+│       │           ├── SwingGUI.scala
+│       │           ├── BoardPanel.scala
+│       │           ├── SidePanel.scala
+│       │           ├── NavBar.scala
+│       │           ├── HistoryPanel.scala
+│       │           ├── HistoryListPanel.scala
+│       │           ├── ClockPanel.scala
+│       │           ├── StartPanel.scala
+│       │           └── PromotionDialog.scala
+│       └── test/scala/chess/             # TUISpec, ControllerSpec, ControllerRoutesSpec
+│
+├── playerservice/                     # Eigenständiger Player-Service (Port 8083)
+│   └── src/main/scala/chess/playerservice/
+│       ├── PlayerRegistry.scala       # In-Memory-Spieler- und Sitzungsverwaltung
+│       └── api/
+│           ├── PlayerRoutes.scala     # REST-Endpoints
+│           └── PlayerServer.scala     # Http4s-Server (IOApp)
+│
+├── benchmark/                         # JMH Micro-Benchmarks (sbt-jmh)
+│   └── src/main/scala/chess/benchmark/
+│       ├── FenBenchmark.scala         # FEN-Parser: Regex vs. Combinator vs. Fast
+│       ├── MoveGenerationBenchmark.scala
+│       ├── EvaluatorBenchmark.scala
+│       └── AlphaBetaBenchmark.scala   # Alpha-Beta-Suche auf Tiefe 1–3
+│
+├── k6/                                # k6 HTTP-Lasttests
+│   └── scripts/
+│       ├── all.js                     # Alle Services: Smoke + Load + Controller-Ramp
+│       ├── model.js
+│       ├── controller.js
+│       ├── player.js
+│       ├── stockfish.js
+│       ├── multi-game.js              # Multi-Game-Endpoints (/game/{id}/…)
+│       └── smoke.js
+│
+├── gatling/                           # Gatling HTTP-Lasttests (Scala-DSL, HTML-Reports)
+│   └── src/test/
+│       ├── resources/
+│       │   ├── gatling.conf
+│       │   └── logback-test.xml
+│       └── scala/chess/gatling/
+│           ├── config/
+│           │   └── GatlingConfig.scala        # BASE_URL, Thresholds, VU-Counts
+│           ├── scenarios/
+│           │   ├── ModelScenarios.scala
+│           │   ├── ControllerScenarios.scala
+│           │   ├── PlayerScenarios.scala
+│           │   └── StockfishScenarios.scala
+│           └── simulations/
+│               ├── ModelSimulation.scala
+│               ├── ControllerSimulation.scala
+│               ├── PlayerSimulation.scala
+│               ├── StockfishSimulation.scala
+│               └── AllServicesSimulation.scala
+│
+└── docs/                              # Dokumentation (Markdown)
 ```
 
 ### Modul-Abhängigkeiten
 
 ```
-controller ──dependsOn──▶ model
+controller    ──dependsOn──▶ model
+benchmark     ──dependsOn──▶ model
+playerservice                (unabhängig, eigener Service)
+gatling                      (kein compile-Abhängigkeit — HTTP-Tests gegen laufende Services)
+k6                           (kein compile-Abhängigkeit — HTTP-Tests gegen laufende Services)
 ```
 
 Das Model-Modul hat **keine** Abhängigkeit zum Controller. Diese Trennung wird auf Build-Ebene erzwungen.
