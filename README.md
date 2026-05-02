@@ -156,6 +156,118 @@ Der Report liegt anschließend unter:
 
 ---
 
+## Performancetests
+
+Alle Performancetests setzen voraus, dass die Services laufen (Docker Compose oder sbt).
+Schnellstart: `docker compose up -d` — nginx ist dann unter `http://localhost:3000` erreichbar.
+
+### JMH
+
+Micro-Benchmarks für reine Scala-Logik (kein laufender Service nötig).
+Benchmarks liegen in [`benchmark/src/main/scala/chess/benchmark/`](benchmark/src/main/scala/chess/benchmark/).
+
+```bash
+# Alle Benchmarks ausführen
+sbt "benchmark/Jmh/run"
+
+# Einzelne Benchmark-Klassen
+sbt "benchmark/Jmh/run .*FenBenchmark.*"
+sbt "benchmark/Jmh/run .*MoveGenerationBenchmark.*"
+sbt "benchmark/Jmh/run .*EvaluatorBenchmark.*"
+sbt "benchmark/Jmh/run .*AlphaBetaBenchmark.*"
+
+# Mit Ausgabe-Format (z. B. JSON für externe Auswertung)
+sbt "benchmark/Jmh/run -rf json -rff results.json"
+```
+
+| Klasse | Testet |
+|---|---|
+| `FenBenchmark` | FEN-Parser (Fast / Regex / Combinator) |
+| `MoveGenerationBenchmark` | `legalMoves`, `isValidMove`, `applyMove` |
+| `EvaluatorBenchmark` | `Evaluator.evaluate`, Board-Operationen |
+| `AlphaBetaBenchmark` | Alpha-Beta-Suche auf Tiefe 1–3 |
+
+---
+
+### k6
+
+HTTP-Lasttests gegen die laufenden Services. k6 muss installiert sein (`winget install k6` / `brew install k6`)
+oder per Docker gestartet werden.
+
+Skripte liegen in [`k6/scripts/`](k6/scripts/).
+
+```bash
+# Alle Services testen (Smoke + Load + Ramp)
+k6 run k6/scripts/all.js --env BASE_URL=http://localhost:3000
+
+# Einzelne Services
+k6 run k6/scripts/model.js      --env BASE_URL=http://localhost:3000
+k6 run k6/scripts/controller.js --env BASE_URL=http://localhost:3000
+k6 run k6/scripts/player.js     --env BASE_URL=http://localhost:3000
+k6 run k6/scripts/stockfish.js  --env BASE_URL=http://localhost:3000
+
+# Schneller Smoke-Test
+k6 run k6/scripts/smoke.js      --env BASE_URL=http://localhost:3000
+
+# Über Docker Compose (kein lokales k6 nötig)
+docker compose --profile k6 run --rm k6
+docker compose --profile k6 run --rm k6 run /scripts/controller.js
+```
+
+| Skript | Szenario | VUs | Dauer |
+|---|---|---|---|
+| `smoke.js` | Smoke | 1 | 10 s |
+| `model.js` | Smoke + Load | 1 / 10 | 10 s + 30 s |
+| `controller.js` | Smoke + Load | 1 / 10 | 10 s + 30 s |
+| `player.js` | Smoke + Load | 1 / 10 | 10 s + 30 s |
+| `stockfish.js` | Smoke + Load | 1 / 5 | 10 s + 30 s |
+| `all.js` | Smoke + Load + Ramp | alle Services | ~2 min |
+
+**Thresholds:** Fehlerrate < 1 %, Smoke p95 < 300 ms, Load p95 < 500 ms, Stockfish p95 < 5000 ms.
+
+---
+
+### Gatling
+
+HTTP-Lasttests mit automatisch generiertem HTML-Report.
+Simulationen liegen in [`gatling/src/test/scala/chess/gatling/simulations/`](gatling/src/test/scala/chess/gatling/simulations/).
+
+**Voraussetzung:** Docker Compose muss laufen (`docker compose up -d`).
+
+```bash
+# Alle Simulationen nacheinander ausführen
+sbt gatlingAll
+
+# Einzelne Simulationen
+sbt "gatling/Gatling/testOnly chess.gatling.simulations.ModelSimulation"
+sbt "gatling/Gatling/testOnly chess.gatling.simulations.ControllerSimulation"
+sbt "gatling/Gatling/testOnly chess.gatling.simulations.PlayerSimulation"
+sbt "gatling/Gatling/testOnly chess.gatling.simulations.StockfishSimulation"
+sbt "gatling/Gatling/testOnly chess.gatling.simulations.AllServicesSimulation"
+
+# Nur kompilieren (ohne Ausführung — zum Prüfen auf Typfehler)
+sbt "gatling/compile"
+
+# Andere BASE_URL (Standard: http://localhost:3000)
+$env:BASE_URL = "http://localhost:3000"; sbt gatlingAll
+```
+
+| Simulation | Testet | Szenarien |
+|---|---|---|
+| `ModelSimulation` | Model-Service | Smoke + Load |
+| `ControllerSimulation` | Controller-Service | Smoke + Load |
+| `PlayerSimulation` | Player-Service | Smoke + Load |
+| `StockfishSimulation` | Stockfish via Model | Smoke + Load (p95 < 5000 ms) |
+| `AllServicesSimulation` | Alle Services | Smoke + Load + Controller-Ramp |
+
+**HTML-Report** — wird nach jedem Lauf automatisch erzeugt:
+
+```
+gatling/target/gatling/<SimulationsName>-<Timestamp>/index.html
+```
+
+---
+
 ## Projektstruktur
 
 Das Projekt ist als **sbt Multi-Module Build** organisiert:
