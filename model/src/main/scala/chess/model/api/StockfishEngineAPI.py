@@ -1,9 +1,12 @@
 from __future__ import annotations
 
+import contextlib
+import dataclasses
 import os
-import threading
+import queue
+import asyncio
 from contextlib import asynccontextmanager
-from typing import AsyncIterator, Optional
+from typing import AsyncIterator, Iterator, Optional
 
 import chess
 import chess.engine
@@ -58,80 +61,103 @@ class EvaluateResponse(BaseModel):
 	engine: str = "stockfish"
 
 
+@dataclasses.dataclass
+class _EngineSlot:
+	engine: chess.engine.SimpleEngine
+	last_config: dict = dataclasses.field(default_factory=dict)
+
+
 class StockfishManager:
 	def __init__(self) -> None:
 		self.engine_path = os.getenv("STOCKFISH_PATH", "/usr/games/stockfish")
-		self._engine: Optional[chess.engine.SimpleEngine] = None
+		self._pool_size = int(os.getenv("STOCKFISH_POOL_SIZE", "2"))
+		self._pool: queue.Queue[_EngineSlot] = queue.Queue()
 		self._startup_error: Optional[str] = None
-		self._lock = threading.Lock()
 
 	def start(self) -> None:
-		with self._lock:
-			self._start_locked()
+		for _ in range(self._pool_size):
+			slot = self._create_slot()
+			if slot is not None:
+				self._pool.put(slot)
 
 	def stop(self) -> None:
-		with self._lock:
-			if self._engine is not None:
-				self._engine.quit()
-			self._engine = None
+		while not self._pool.empty():
+			try:
+				slot = self._pool.get_nowait()
+				slot.engine.quit()
+			except queue.Empty:
+				break
 
-	def _start_locked(self) -> None:
-		if self._engine is not None:
-			return
+	def _create_slot(self) -> Optional[_EngineSlot]:  # pragma: no cover - startup can fail due to host env
 		try:
-			self._engine = chess.engine.SimpleEngine.popen_uci(self.engine_path)
-			self._startup_error = None
-		except Exception as ex:  # pragma: no cover - startup can fail due to host env
-			self._engine = None
+			engine = chess.engine.SimpleEngine.popen_uci(self.engine_path)
+			return _EngineSlot(engine=engine)
+		except Exception as ex:
 			self._startup_error = str(ex)
+			return None
 
-	def ensure_engine(self) -> chess.engine.SimpleEngine:
-		if self._engine is None:
-			self._start_locked()
-		if self._engine is None:
-			detail = self._startup_error or "Stockfish could not be started"
-			raise HTTPException(status_code=503, detail=detail)
-		return self._engine
+	@contextlib.contextmanager
+	def _acquire_slot(self) -> Iterator[_EngineSlot]:
+		try:
+			slot = self._pool.get(timeout=30)
+		except queue.Empty:
+			raise HTTPException(status_code=503, detail=self._startup_error or "No Stockfish engine available")
+		replace = False
+		try:
+			yield slot
+		except chess.engine.EngineTerminatedError:
+			replace = True
+			raise
+		finally:
+			if replace:
+				new_slot = self._create_slot()
+				if new_slot:
+					self._pool.put(new_slot)
+			else:
+				self._pool.put(slot)
 
-	def configure(self, req: BestMoveRequest | EvaluateRequest) -> None:
-		engine = self.ensure_engine()
-		options = {}
+	def _apply_config(self, slot: _EngineSlot, req: BestMoveRequest | EvaluateRequest) -> None:
+		new_config: dict = {}
 		if req.skillLevel is not None:
-			options["Skill Level"] = req.skillLevel
+			new_config["Skill Level"] = req.skillLevel
 		if req.threads is not None:
-			options["Threads"] = req.threads
+			new_config["Threads"] = req.threads
 		if req.hashMb is not None:
-			options["Hash"] = req.hashMb
-		if options:
-			engine.configure(options)
+			new_config["Hash"] = req.hashMb
+		if new_config != slot.last_config:
+			slot.engine.configure(new_config)
+			slot.last_config = new_config
 
 	def health(self) -> dict:
-		with self._lock:
-			self.ensure_engine()
-			return {
-				"status": "ok",
-				"service": "stockfish-engine",
-				"enginePath": self.engine_path,
-			}
+		available = self._pool.qsize()
+		if available == 0:
+			raise HTTPException(status_code=503, detail=self._startup_error or "No engines available")
+		return {
+			"status": "ok",
+			"service": "stockfish-engine",
+			"enginePath": self.engine_path,
+			"poolSize": self._pool_size,
+			"available": available,
+		}
 
 	def best_move(self, req: BestMoveRequest) -> BestMoveResponse:
 		board = parse_fen(req.fen)
-		with self._lock:
-			try:
-				engine = self.ensure_engine()
-				self.configure(req)
-				result = engine.play(
+		try:
+			with self._acquire_slot() as slot:
+				self._apply_config(slot, req)
+				result = slot.engine.play(
 					board,
 					chess.engine.Limit(time=req.thinkTimeMs / 1000.0),
 					info=chess.engine.INFO_BASIC | chess.engine.INFO_SCORE,
 				)
-			except chess.engine.EngineTerminatedError as ex:
-				self._engine = None
-				raise HTTPException(status_code=503, detail=f"Stockfish terminated: {ex}") from ex
-			except TimeoutError as ex:
-				raise HTTPException(status_code=504, detail="Stockfish request timed out") from ex
-			except Exception as ex:
-				raise HTTPException(status_code=500, detail=f"Stockfish error: {ex}") from ex
+		except chess.engine.EngineTerminatedError as ex:
+			raise HTTPException(status_code=503, detail=f"Stockfish terminated: {ex}") from ex
+		except TimeoutError as ex:
+			raise HTTPException(status_code=504, detail="Stockfish request timed out") from ex
+		except HTTPException:
+			raise
+		except Exception as ex:
+			raise HTTPException(status_code=500, detail=f"Stockfish error: {ex}") from ex
 
 		if result.move is None:
 			raise HTTPException(status_code=422, detail="No legal move available")
@@ -152,22 +178,22 @@ class StockfishManager:
 
 	def evaluate(self, req: EvaluateRequest) -> EvaluateResponse:
 		board = parse_fen(req.fen)
-		with self._lock:
-			try:
-				engine = self.ensure_engine()
-				self.configure(req)
-				info = engine.analyse(
+		try:
+			with self._acquire_slot() as slot:
+				self._apply_config(slot, req)
+				info = slot.engine.analyse(
 					board,
 					chess.engine.Limit(time=req.thinkTimeMs / 1000.0),
 					info=chess.engine.INFO_BASIC | chess.engine.INFO_SCORE | chess.engine.INFO_PV,
 				)
-			except chess.engine.EngineTerminatedError as ex:
-				self._engine = None
-				raise HTTPException(status_code=503, detail=f"Stockfish terminated: {ex}") from ex
-			except TimeoutError as ex:
-				raise HTTPException(status_code=504, detail="Stockfish request timed out") from ex
-			except Exception as ex:
-				raise HTTPException(status_code=500, detail=f"Stockfish error: {ex}") from ex
+		except chess.engine.EngineTerminatedError as ex:
+			raise HTTPException(status_code=503, detail=f"Stockfish terminated: {ex}") from ex
+		except TimeoutError as ex:
+			raise HTTPException(status_code=504, detail="Stockfish request timed out") from ex
+		except HTTPException:
+			raise
+		except Exception as ex:
+			raise HTTPException(status_code=500, detail=f"Stockfish error: {ex}") from ex
 
 		score_cp, mate = extract_score(info.get("score"), chess.WHITE)
 		pv = info.get("pv") or []
@@ -262,10 +288,10 @@ def health() -> dict:
 
 
 @app.post("/best-move", response_model=BestMoveResponse)
-def best_move(req: BestMoveRequest) -> BestMoveResponse:
-	return manager.best_move(req)
+async def best_move(req: BestMoveRequest) -> BestMoveResponse:
+	return await asyncio.to_thread(manager.best_move, req)
 
 
 @app.post("/evaluate", response_model=EvaluateResponse)
-def evaluate(req: EvaluateRequest) -> EvaluateResponse:
-	return manager.evaluate(req)
+async def evaluate(req: EvaluateRequest) -> EvaluateResponse:
+	return await asyncio.to_thread(manager.evaluate, req)
