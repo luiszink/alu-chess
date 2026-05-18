@@ -60,9 +60,5 @@ h3 g4
 e2 e4
 c7 c5
 c1 e3
-c5 e3
-e4 e3
-b8 d7
-e3 d3
 f8 d8
 b2 b4
