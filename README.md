@@ -34,9 +34,10 @@ Inspiration: [Lichess](https://lichess.org/), aber wesentlich einfacher.
 | Coverage | sbt-scoverage 2.2.2 |
 | GUI | Scala Swing 3.0.0 |
 | REST API | Http4s 0.23 + Circe |
+| Reactive Streams | Apache Pekko 1.6.0 + Pekko Streams |
 | Container | Docker + Docker Compose |
 | Reverse Proxy | nginx (API Gateway für alle Services) |
-| Architektur | MVC + Observer, Multi-Module (sbt) |
+| Architektur | MVC + Observer + Reactive Streams, Multi-Module (sbt) |
 
 ---
 
@@ -110,6 +111,9 @@ docker compose --profile postgres up --build
 
 # Mit MongoDB
 docker compose --profile mongo up --build
+
+# Mit Kafka (nächste Woche — Streaming-Source auf Kafka umstellen)
+docker compose --profile kafka up --build
 ```
 
 > **Hinweis zu `FRONTEND_CONTEXT`:** Der Pfad wird relativ zur `docker-compose.yml` aufgelöst.
@@ -158,20 +162,48 @@ Der Report liegt anschließend unter:
 
 ## Reactive Streams (Pekko)
 
-Eine Implementierung von Reactive Streams mittels Apache Pekko (dem offiziellen Akka-Fork) befindet sich im Modul `streaming/`.
-Das Modul zeigt klassische Stream-Verarbeitungskonzepte wie Source, Flow und Sink inklusive Backpressure auf Basis von Schachpartien in einer Custom-DSL (`<from> <to>`).
+Das Modul `streaming/` implementiert eine reaktive Stream-Pipeline mit Apache Pekko Streams.
+Die Pipeline ist direkt in den Controller eingebunden: jeder Spielzug fließt automatisch durch die Pipeline und wird in der Konsole ausgegeben.
 
-Stream starten:
-```bash
-sbt "project streaming" run
+**Architektur:**
+```
+Controller (Observable)
+    │  notifyObservers()
+    ▼
+ControllerStreamBridge (Observer → Source.queue)
+    │  ByteString "e2 e4\n"
+    ▼
+parseFlow → gameProcessingFlow → enrichFlow
+    │
+    ▼
+Sink (Konsole + GameStats)
 ```
 
-Eigenschaften der Implementierung:
-- **Source**: Dateibasiert (fallweise Classpath-Resource `sample-game.dsl`).
-- **Flow 1 (`parseFlow`)**: Tokenizing und Parsing von Text-Zügen in Domänenobjekte.
-- **Flow 2 (`gameProcessingFlow`)**: Stateful Stream-Verarbeitung für das Board. Validiert und integriert Züge asynchron. Eingebautes statisches Buffer-Backpressure (`buffer(16, backpressure)`).
-- **Flow 3 (`enrichFlow`)**: CPU-intensive Brett-Evaluation pro Zug, asynchron begrenzt mittels Backpressure (`mapAsync(4)`).
-- **Sink**: Aggregiert alle Züge und Ergebnisse (`fold`), flankiert durch parallel auf die Konsole umgeleitete Konsolenausgaben der Partieverläufe (`wireTap`).
+**Starten:**
+```bash
+# Live-Modus: Stream startet automatisch mit dem Controller
+sbt "controller/run"
+sbt runAll
+
+# Demo-Modus: Standalone mit sample-game.dsl (kein Controller nötig)
+sbt "streaming/run"
+```
+
+**Eigenschaften der Pipeline:**
+- **Source**: `ControllerStreamBridge` — Observer-to-Stream-Adapter. Jeder Spielzug wird als DSL-Zeile (`e2 e4`) in eine `Source.queue` gepusht. `OverflowStrategy.dropHead` verhindert Blocking der UI.
+- **Flow 1 (`parseFlow`)**: Tokenizing und Parsing von DSL-Zügen in `ParsedMove`-Domänenobjekte.
+- **Flow 2 (`gameProcessingFlow`)**: Stateful Stream-Verarbeitung. Validiert Züge und führt sie auf einem parallelen Game-State aus. Buffer-Backpressure (`buffer(16, backpressure)`).
+- **Flow 3 (`enrichFlow`)**: Parallele Stellungsbewertung via `Evaluator`. Backpressure durch `mapAsync(4)`.
+- **Sink**: Konsolenausgabe pro Zug + aggregierte `GameStats` am Ende.
+
+**Kafka-Vorbereitung (nächste Woche):**
+Nur die Source in `ChessStreamApp.run()` austauschen — die drei Flows bleiben unverändert:
+```scala
+// Statt ControllerStreamBridge:
+Consumer.plainSource(settings, Subscriptions.topics("chess-moves"))
+  .map(r => ByteString(r.value()))
+```
+Kafka-Broker starten: `docker compose --profile kafka up`
 
 ---
 
@@ -377,9 +409,10 @@ alu-chess/
 │       ├── main/scala/chess/
 │       │   ├── Chess.scala                # Entry Point (@main aluChess)
 │       │   ├── controller/
-│       │   │   ├── Controller.scala       # Use-Case-Koordination, Observable
+│       │   │   ├── Controller.scala           # Use-Case-Koordination, Observable
 │       │   │   ├── ControllerInterface.scala
-│       │   │   ├── GameRegistry.scala     # Multi-Game-Verwaltung (concurrent Map)
+│       │   │   ├── ControllerStreamBridge.scala  # Observer → Pekko Source.queue Bridge
+│       │   │   ├── GameRegistry.scala         # Multi-Game-Verwaltung (concurrent Map)
 │       │   │   └── api/
 │       │   │       ├── ControllerRoutes.scala   # Einzelspiel-Endpoints
 │       │   │       ├── MultiGameRoutes.scala    # Multi-Game-Endpoints (/game/{id}/…)
@@ -449,14 +482,16 @@ alu-chess/
 ### Modul-Abhängigkeiten
 
 ```
-controller    ──dependsOn──▶ model
+controller    ──dependsOn──▶ streaming ──dependsOn──▶ model
 benchmark     ──dependsOn──▶ model
 playerservice                (unabhängig, eigener Service)
 gatling                      (kein compile-Abhängigkeit — HTTP-Tests gegen laufende Services)
 k6                           (kein compile-Abhängigkeit — HTTP-Tests gegen laufende Services)
 ```
 
-Das Model-Modul hat **keine** Abhängigkeit zum Controller. Diese Trennung wird auf Build-Ebene erzwungen.
+Das `streaming`-Modul kennt nur `model` — keine Abhängigkeit zum Controller.
+Der Controller hängt von `streaming` ab und startet die Pipeline beim Hochfahren.
+Diese Trennung wird auf Build-Ebene erzwungen.
 
 ---
 
@@ -467,6 +502,7 @@ Das Projekt folgt dem **MVC-Pattern** mit **Observer** für lose Kopplung und is
 - **Model-Modul** (`model/`) – Immutable Domain-Objekte (`Board`, `Piece`, `Game`, `Move`, `Position`, `MoveValidator`, …). Kein `var`, kein `null`, keine Abhängigkeiten zu View oder Controller. Fehlerbehandlung über `Either[ChessError, _]`. Eigener REST-Service via Http4s (Port 8082).
 - **Controller-Modul** (`controller/`) – Koordiniert Use Cases (Zug ausführen, FEN laden, Aufgeben, Uhr, Replay). Implementiert `Observable` und hält den Spielzustand. Abhängig vom Model-Modul. Eigener REST-Service via Http4s (Port 8081).
 - **View (aview)** – Swing-GUI und TUI als `Observer` im Controller-Modul. Beide reagieren auf dieselben Controller-Events.
+- **Reactive Streams** (`streaming/`) – Pekko-Streams-Pipeline mit drei Flows (Parsing, Spielzug-Verarbeitung, Evaluation). Die `ControllerStreamBridge` verbindet das Observer-Pattern des Controllers mit der reaktiven Pipeline: jeder Zug wird als DSL-Zeile in eine `Source.queue` gepusht. Nächste Woche: Source gegen Kafka-Consumer tauschen, Flows bleiben unverändert.
 - **REST APIs** – Beide Module exponieren Http4s-Endpoints. Der Controller-Service kommuniziert mit dem Model-Service per HTTP (Microservice-fähig).
 - **nginx (API Gateway)** – Im Docker-Compose-Setup fungiert nginx als einziger Einstiegspunkt (`localhost:3000`). Es leitet `/api/controller/`-Requests an den Controller-Service und `/api/model/`-Requests an den Model-Service weiter. Die Backend-Ports sind vom Host aus nicht direkt erreichbar. SSE-Verbindungen werden mit `proxy_buffering off` ungepuffert durchgeleitet.
 - **Stockfish-Service** – Separater Python/FastAPI-Service im Docker-Container. Der Model-Service leitet Engine-Requests dorthin weiter (`ENGINE_BASE_URL`, Default: `http://localhost:8000`).
