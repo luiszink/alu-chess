@@ -116,6 +116,31 @@ services:
       timeout: 5s
       retries: 10
 
+  # ── Kafka (nächste Woche) ──────────────────────────────────────
+  # Profil "kafka" – startet nicht automatisch mit den anderen Services.
+  # Source/Sink in ChessStreamApp.run() gegen Kafka-Connector tauschen:
+  #   Source: Consumer.plainSource(settings, Subscriptions.topics("chess-moves"))
+  #   Sink:   Producer.plainSink(settings)
+  #   docker compose --profile kafka up
+  # kafka:
+  #   image: confluentinc/cp-kafka:7.6.0
+  #   environment:
+  #     KAFKA_NODE_ID: 1
+  #     KAFKA_PROCESS_ROLES: broker,controller
+  #     KAFKA_LISTENERS: PLAINTEXT://:9092,CONTROLLER://:9093
+  #     KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:9092
+  #     KAFKA_CONTROLLER_QUORUM_VOTERS: 1@kafka:9093
+  #     KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: PLAINTEXT:PLAINTEXT,CONTROLLER:PLAINTEXT
+  #     CLUSTER_ID: "chess-cluster-01"
+  #   expose:
+  #     - "9092"
+  #   healthcheck:
+  #     test: ["CMD-SHELL", "kafka-broker-api-versions.sh --bootstrap-server localhost:9092 || exit 1"]
+  #     interval: 10s
+  #     timeout: 5s
+  #     retries: 10
+  #   profiles: ["kafka"]
+
   # ── k6 Load / Smoke Tests ──────────────────────────────────────
   # Profil "k6" – startet nicht automatisch mit den anderen Services.
   # Skript per K6_SCRIPT-Variable wählbar, Standard: smoke.js
