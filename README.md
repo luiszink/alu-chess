@@ -156,6 +156,25 @@ Der Report liegt anschließend unter:
 
 ---
 
+## Reactive Streams (Pekko)
+
+Eine Implementierung von Reactive Streams mittels Apache Pekko (dem offiziellen Akka-Fork) befindet sich im Modul `streaming/`.
+Das Modul zeigt klassische Stream-Verarbeitungskonzepte wie Source, Flow und Sink inklusive Backpressure auf Basis von Schachpartien in einer Custom-DSL (`<from> <to>`).
+
+Stream starten:
+```bash
+sbt "project streaming" run
+```
+
+Eigenschaften der Implementierung:
+- **Source**: Dateibasiert (fallweise Classpath-Resource `sample-game.dsl`).
+- **Flow 1 (`parseFlow`)**: Tokenizing und Parsing von Text-Zügen in Domänenobjekte.
+- **Flow 2 (`gameProcessingFlow`)**: Stateful Stream-Verarbeitung für das Board. Validiert und integriert Züge asynchron. Eingebautes statisches Buffer-Backpressure (`buffer(16, backpressure)`).
+- **Flow 3 (`enrichFlow`)**: CPU-intensive Brett-Evaluation pro Zug, asynchron begrenzt mittels Backpressure (`mapAsync(4)`).
+- **Sink**: Aggregiert alle Züge und Ergebnisse (`fold`), flankiert durch parallel auf die Konsole umgeleitete Konsolenausgaben der Partieverläufe (`wireTap`).
+
+---
+
 ## Performancetests
 
 Alle Performancetests setzen voraus, dass die Services laufen (Docker Compose oder sbt).
