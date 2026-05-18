@@ -8,6 +8,7 @@ val http4sVersion = "0.23.30"
 val circeVersion  = "0.14.10"
 val slickVersion      = "3.5.2"
 val mongo4catsVersion = "0.7.17"
+val pekkoVersion = "1.6.0"
 
 val assemblySettings = Seq(
   assembly / assemblyMergeStrategy := {
@@ -110,10 +111,32 @@ lazy val playerservice = project
     ),
   )
 
+// ── Streaming module ──────────────────────────────────────────
+// Reactive Streams Pipeline (Pekko Streams) mit Backpressure.
+// Source: DSL-Datei mit Spielzügen → Flow 1: Parsing →
+// Flow 2: Zustandsbehaftet (scan, buffer mit Backpressure) →
+// Flow 3: Evaluation (mapAsync) → Sink: GameStats.
+// Nächste Woche: Source/Sink gegen Kafka tauschen, Flows unverändert.
+lazy val streaming = project
+  .in(file("streaming"))
+  .dependsOn(model)
+  .settings(
+    commonSettings,
+    assemblySettings,
+    name := "alu-chess-streaming",
+    assembly / mainClass := Some("chess.streaming.ChessStreamApp"),
+    libraryDependencies ++= Seq(
+      "org.apache.pekko" %% "pekko-stream"      % pekkoVersion,
+      "org.apache.pekko" %% "pekko-actor-typed" % pekkoVersion,
+      // Nächste Woche Kafka:
+      // "org.apache.pekko" %% "pekko-connectors-kafka" % "1.1.0",
+    ),
+  )
+
 // ── Root aggregate ────────────────────────────────────────────
 lazy val root = project
   .in(file("."))
-  .aggregate(model, controller, playerservice)
+  .aggregate(model, controller, playerservice, streaming)
   .settings(
     name := "alu-chess",
     publish / skip := true,
