@@ -69,7 +69,7 @@ lazy val model = project
 // Depends on Model for domain types.
 lazy val controller = project
   .in(file("controller"))
-  .dependsOn(model)
+  .dependsOn(model, streaming)
   .settings(
     commonSettings,
     assemblySettings,
