@@ -15,8 +15,11 @@ import io.circe.*
 import io.circe.syntax.*
 import chess.model.*
 import chess.model.dao.{SlickGameDao, MongoGameDao}
-import chess.controller.{Controller, GameRegistry}
+import chess.controller.{Controller, ControllerStreamBridge, GameRegistry}
+import chess.streaming.ChessStreamApp
 import chess.util.Observer
+import org.apache.pekko.actor.typed.ActorSystem
+import org.apache.pekko.actor.typed.scaladsl.Behaviors
 
 object ControllerServer extends IOApp:
 
@@ -62,8 +65,11 @@ object ControllerServer extends IOApp:
     makeRepository.use { repo =>
       EmberClientBuilder.default[IO].build.use { httpClient =>
         for
-          ctrl      <- IO(Controller(repo))
-          sseQueues <- Ref.of[IO, List[Queue[IO, Option[Json]]]](Nil)
+          ctrl        <- IO(Controller(repo))
+          pekkoSystem <- IO(ActorSystem[Nothing](Behaviors.empty, "chess-stream"))
+          bridge      <- IO(ControllerStreamBridge(ctrl)(using pekkoSystem))
+          _           <- IO(ChessStreamApp.run(bridge.gameSource)(using pekkoSystem))
+          sseQueues   <- Ref.of[IO, List[Queue[IO, Option[Json]]]](Nil)
 
           observer = new Observer:
             override def update(): Unit =
