@@ -59,7 +59,7 @@ Kurzreferenz: Was läuft wo, wie wird es gestartet (Docker **oder** rein lokal).
 
 Voraussetzung: `.env` im `alu-chess/`-Verzeichnis mit `FRONTEND_CONTEXT=../alu-chess-web` und ggf. `DB_TYPE=memory`.
 
-```bash
+```powershell
 cd alu-chess
 docker compose up -d --build
 # UI: http://localhost:3000
@@ -67,9 +67,9 @@ docker compose up -d --build
 
 Stoppen + Aufräumen (Disk frei):
 
-```bash
+```powershell
 docker compose down
-docker system prune -af --volumes   # ← gibt am meisten Platz zurück
+docker system prune -af --volumes   # gibt am meisten Platz zurück
 ```
 
 ## Variante B — möglichst lokal (minimaler Disk-Bedarf)
@@ -79,74 +79,95 @@ Du musst **nur Stockfish** in Docker laufen lassen (Image ~150 MB), alles andere
 ### 0. Voraussetzungen
 - JDK 17, sbt
 - Node 18+
-- (optional) Docker — nur für Stockfish
+- (optional) Docker Desktop — nur für Stockfish
+
+Prüfen:
+
+```powershell
+java -version
+sbt --version
+node --version
+```
 
 ### 1. Stockfish-Engine in Docker (optional, ~150 MB)
 
-```bash
+```powershell
 cd alu-chess
 docker compose up -d stockfish
-# → http://localhost:8000  (nur intern aus dem Compose-Netz erreichbar)
+# läuft intern auf Port 8000, ohne Port-Mapping nicht von Windows aus erreichbar
 ```
 
-Damit dein lokal laufender Model-Service den Container erreicht, im nächsten Schritt Port mappen — entweder vorübergehend per Override:
+Damit dein lokal laufender Model-Service den Container erreicht, eine lokale Override-Datei anlegen (nicht committen):
 
 ```yaml
-# alu-chess/docker-compose.override.yml  (nur lokal, nicht committen)
+# alu-chess/docker-compose.override.yml
 services:
   stockfish:
     ports:
       - "127.0.0.1:8000:8000"
 ```
 
-…oder Stockfish komplett überspringen und `ENGINE_BASE_URL` leer lassen (dann sind die Engine-Endpoints des Model-Service deaktiviert, KI gegen Mensch geht trotzdem).
+…oder Stockfish komplett überspringen und `ENGINE_BASE_URL` weglassen (dann sind die Engine-Endpoints des Model-Service deaktiviert, KI gegen Mensch geht trotzdem).
 
 ### 2. Backend lokal starten
 
-In **jeweils eigenem Terminal**:
+In **jeweils einem eigenen PowerShell-Fenster**. ENV-Variablen gelten in PowerShell nur in der **aktuellen Session** — am einfachsten zuerst setzen, dann `sbt` starten.
 
-```bash
+```powershell
 # Terminal 1 — Model
 cd alu-chess
-PORT=8082 ENGINE_BASE_URL=http://localhost:8000 sbt "model/run"
-
-# Terminal 2 — PlayerService
-cd alu-chess
-PORT=8083 sbt "playerservice/run"
-
-# Terminal 3 — Controller
-cd alu-chess
-PORT=8081 \
-  PLAYER_SERVICE_URL=http://localhost:8083 \
-  DB_TYPE=memory \
-  sbt "controller/run"
-
-# Terminal 4 — Tournament (optional)
-cd alu-chess
-PORT=8084 \
-  TOURNAMENT_BASE_URL=https://st.nowchess.janis-eccarius.de \
-  TOURNAMENT_BOT_TOKEN=... \
-  sbt "tournament/run"
-
-# Terminal 5 — Lichess (optional)
-cd alu-chess
-PORT=8085 \
-  LICHESS_BOT_TOKEN=lip_xxx \
-  sbt "lichess/run"
+$env:PORT = "8082"
+$env:ENGINE_BASE_URL = "http://localhost:8000"
+sbt "model/run"
 ```
 
-> Windows / Git-Bash: ENV inline gleich, z. B. `PORT=8082 ENGINE_BASE_URL=http://localhost:8000 sbt "model/run"`. PowerShell: `$env:PORT=8082; sbt "model/run"`.
+```powershell
+# Terminal 2 — PlayerService
+cd alu-chess
+$env:PORT = "8083"
+sbt "playerservice/run"
+```
+
+```powershell
+# Terminal 3 — Controller
+cd alu-chess
+$env:PORT = "8081"
+$env:PLAYER_SERVICE_URL = "http://localhost:8083"
+$env:DB_TYPE = "memory"
+sbt "controller/run"
+```
+
+```powershell
+# Terminal 4 — Tournament (optional)
+cd alu-chess
+$env:PORT = "8084"
+$env:TOURNAMENT_BASE_URL = "https://st.nowchess.janis-eccarius.de"
+$env:TOURNAMENT_BOT_TOKEN = "..."
+sbt "tournament/run"
+```
+
+```powershell
+# Terminal 5 — Lichess (optional)
+cd alu-chess
+$env:PORT = "8085"
+$env:LICHESS_BOT_TOKEN = "lip_xxx"
+sbt "lichess/run"
+```
+
+> Tipp: Beim Branch-Wechsel zwischen `feature/lichess` und `feature/tournament` einmal `sbt clean` ausführen, falls alte `.class`-Dateien gemeldet werden.
+
+> Falls `sbt "lichess/run"` mit „project not found" abbricht, bist du auf einem Branch, der das Modul nicht hat — wechsle auf `feature/lichess` (analog `feature/tournament`).
 
 ### 3. Frontend lokal starten
 
-```bash
+```powershell
 cd alu-chess-web
-npm install                # einmalig
+npm install        # einmalig
 npm run dev
-# → http://localhost:5173
+# UI: http://localhost:5173
 ```
 
-Die `vite.config.ts` proxied automatisch:
+Die [vite.config.ts](../../alu-chess-web/vite.config.ts) proxied automatisch:
 
 | Pfad | Ziel |
 |---|---|
@@ -166,12 +187,21 @@ Die `vite.config.ts` proxied automatisch:
 
 Du musst **nicht alles** gleichzeitig starten.
 
-### 5. Speicherplatz-Tipps
+### 5. Speicherplatz-Tipps (PowerShell)
 
-- `sbt clean` in `alu-chess/` löscht alle `target/`-Ordner (mehrere GB).
-- `~/.ivy2` und `~/.sbt/boot` nicht löschen — sonst lädt sbt alles neu.
-- Frontend: `rm -rf alu-chess-web/node_modules/.vite` falls Vite-Cache zu groß.
-- Docker: `docker system prune -af --volumes` räumt unbenutzte Images + Volumes.
+```powershell
+# alle Scala-Build-Ordner löschen (mehrere GB) — neu kompilieren danach
+cd alu-chess
+sbt clean
+
+# Vite-Cache wegwerfen
+Remove-Item -Recurse -Force alu-chess-web\node_modules\.vite -ErrorAction SilentlyContinue
+
+# Docker-Aufräumen
+docker system prune -af --volumes
+```
+
+`~/.ivy2` und `~/.sbt/boot` **nicht** löschen — sonst lädt sbt beim nächsten Start alle Abhängigkeiten erneut.
 
 ## Branches & Merge-Reihenfolge
 
