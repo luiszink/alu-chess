@@ -133,10 +133,36 @@ lazy val streaming = project
     ),
   )
 
+// ── Lichess module ────────────────────────────────────────────
+// Microservice that connects to lichess.org Bot API:
+//   - Streams incoming events (challenges, game-start) via NDJSON
+//   - Auto-accepts casual standard challenges within configured time-control range
+//   - Plays each game using chess.model.ai.ChessAI
+//   - Exposes a small REST + SSE facade for the web UI
+lazy val lichess = project
+  .in(file("lichess"))
+  .dependsOn(model)
+  .settings(
+    commonSettings,
+    assemblySettings,
+    name := "alu-chess-lichess",
+    assembly / mainClass := Some("chess.lichess.api.LichessServer"),
+    libraryDependencies ++= Seq(
+      "io.circe" %% "circe-core"    % circeVersion,
+      "io.circe" %% "circe-generic" % circeVersion,
+      "io.circe" %% "circe-parser"  % circeVersion,
+      "org.http4s" %% "http4s-ember-server" % http4sVersion,
+      "org.http4s" %% "http4s-ember-client" % http4sVersion,
+      "org.http4s" %% "http4s-circe"        % http4sVersion,
+      "org.http4s" %% "http4s-dsl"          % http4sVersion,
+    ),
+    coverageEnabled := false,
+  )
+
 // ── Root aggregate ────────────────────────────────────────────
 lazy val root = project
   .in(file("."))
-  .aggregate(model, controller, playerservice, streaming)
+  .aggregate(model, controller, playerservice, streaming, lichess)
   .settings(
     name := "alu-chess",
     publish / skip := true,
