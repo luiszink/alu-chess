@@ -31,6 +31,32 @@ final class LichessBotSession private (
 
   def events: fs2.Stream[IO, Json] = topic.subscribe(64)
 
+  // ── Outgoing actions exposed to the UI ───────────────────────────────
+
+  def createChallenge(
+      username: String,
+      limitSeconds: Int,
+      incrementSeconds: Int,
+      rated: Boolean,
+      color: String,
+  ): IO[Json] =
+    client
+      .createChallenge(username, limitSeconds, incrementSeconds, rated, color)
+      .flatMap(raw => IO.fromEither(io.circe.parser.parse(raw)))
+      .flatTap(j => publish(Json.obj(
+        "type"      -> Json.fromString("challengeCreated"),
+        "target"    -> Json.fromString(username),
+        "challenge" -> j,
+      )))
+
+  def abortGame(gameId: String): IO[Unit] =
+    client.abort(gameId) *>
+      publish(Json.obj("type" -> Json.fromString("aborted"), "id" -> Json.fromString(gameId)))
+
+  def resignGame(gameId: String): IO[Unit] =
+    client.resign(gameId) *>
+      publish(Json.obj("type" -> Json.fromString("resigned"), "id" -> Json.fromString(gameId)))
+
   def snapshot: IO[Json] =
     for
       games      <- activeGames.get.map(_.keys.toList.sorted)

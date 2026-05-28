@@ -75,6 +75,28 @@ final class LichessApiClient(
     )
     client.expect[String](req).void
 
+  /** Create an outgoing challenge against `username`. Returns the raw JSON
+    * response from Lichess (contains the new challenge id). */
+  def createChallenge(
+      username: String,
+      clockLimitSeconds: Int,
+      clockIncrementSeconds: Int,
+      rated: Boolean,
+      color: String, // "random" | "white" | "black"
+      variant: String = "standard",
+  ): IO[String] =
+    val form = UrlForm(
+      "rated"           -> rated.toString,
+      "clock.limit"     -> clockLimitSeconds.toString,
+      "clock.increment" -> clockIncrementSeconds.toString,
+      "color"           -> color,
+      "variant"         -> variant,
+    )
+    val req = authed(
+      Request[IO](POST, baseUri / "api" / "challenge" / username).withEntity(form)
+    )
+    client.expect[String](req)
+
   // ── Helpers ───────────────────────────────────────────────────────────
 
   private def ndjsonLines(req: Request[IO]): fs2.Stream[IO, String] =

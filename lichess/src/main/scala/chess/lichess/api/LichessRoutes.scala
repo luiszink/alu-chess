@@ -4,14 +4,23 @@ import cats.data.NonEmptyList
 import cats.effect.{IO, Ref}
 import chess.lichess.config.LichessConfig
 import chess.lichess.state.{BotState, LichessBotSession}
-import io.circe.Json
+import io.circe.{Decoder, Json}
 import io.circe.syntax.*
 import org.http4s.*
 import org.http4s.circe.*
+import org.http4s.circe.CirceEntityCodec.*
 import org.http4s.dsl.io.*
 import org.http4s.headers.`Cache-Control`
 import org.http4s.CacheDirective
 import org.http4s.ServerSentEvent
+
+private final case class ChallengeRequest(
+    username: String,
+    limitSeconds: Int,
+    incrementSeconds: Int,
+    rated: Boolean,
+    color: String,
+) derives Decoder
 
 /** Thin REST + SSE facade for the React frontend.
   *
@@ -73,4 +82,31 @@ object LichessRoutes:
           case _ =>
             ServiceUnavailable(Json.obj("error" -> Json.fromString("bot not connected")))
         }
+
+      case req @ POST -> Root / "api" / "lichess" / "challenge" =>
+        withRunning(stateRef) { s =>
+          req.as[ChallengeRequest].flatMap { c =>
+            s.createChallenge(c.username, c.limitSeconds, c.incrementSeconds, c.rated, c.color)
+              .flatMap(Ok(_))
+              .handleErrorWith(t => BadRequest(Json.obj("error" -> Json.fromString(t.getMessage))))
+          }
+        }
+
+      case POST -> Root / "api" / "lichess" / "games" / gameId / "abort" =>
+        withRunning(stateRef) { s =>
+          s.abortGame(gameId).as(Json.obj("ok" -> Json.True)).flatMap(Ok(_))
+            .handleErrorWith(t => BadRequest(Json.obj("error" -> Json.fromString(t.getMessage))))
+        }
+
+      case POST -> Root / "api" / "lichess" / "games" / gameId / "resign" =>
+        withRunning(stateRef) { s =>
+          s.resignGame(gameId).as(Json.obj("ok" -> Json.True)).flatMap(Ok(_))
+            .handleErrorWith(t => BadRequest(Json.obj("error" -> Json.fromString(t.getMessage))))
+        }
+    }
+
+  private def withRunning(stateRef: Ref[IO, BotState])(f: LichessBotSession => IO[Response[IO]]): IO[Response[IO]] =
+    stateRef.get.flatMap {
+      case BotState.Running(s) => f(s)
+      case _ => ServiceUnavailable(Json.obj("error" -> Json.fromString("bot not connected")))
     }
