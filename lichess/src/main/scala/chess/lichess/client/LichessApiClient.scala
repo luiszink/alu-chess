@@ -95,7 +95,26 @@ final class LichessApiClient(
     val req = authed(
       Request[IO](POST, baseUri / "api" / "challenge" / username).withEntity(form)
     )
-    client.expect[String](req)
+    client.run(req).use { resp =>
+      resp.bodyText.compile.string.flatMap { body =>
+        if resp.status.isSuccess then IO.pure(body)
+        else
+          val msg = resp.status.code match
+            case 404 => s"Lichess kennt den Benutzer '$username' nicht (404)."
+            case 400 =>
+              val detail = extractError(body).getOrElse(body.take(200))
+              s"Lichess hat die Challenge abgelehnt: $detail"
+            case 401 => "Token ungültig oder fehlende Berechtigung (401)."
+            case c   => s"Lichess Fehler $c: ${extractError(body).getOrElse(body.take(200))}"
+          IO.raiseError(new RuntimeException(msg))
+      }
+    }
+
+  private def extractError(body: String): Option[String] =
+    JsonParser.parse(body).toOption.flatMap { j =>
+      j.hcursor.get[String]("error").toOption
+        .orElse(j.hcursor.get[String]("message").toOption)
+    }
 
   // ── Helpers ───────────────────────────────────────────────────────────
 
