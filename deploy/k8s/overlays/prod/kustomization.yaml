@@ -18,3 +18,6 @@ images:
   - name: localhost/alu-chess-stockfish
     newName: localhost/alu-chess-stockfish
     newTag: 0.1.0
+  - name: localhost/alu-chess-lichess
+    newName: localhost/alu-chess-lichess
+    newTag: 0.1.0

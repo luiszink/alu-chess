@@ -10,6 +10,7 @@ Ziel:
 - App-Images in K3S/containerd importieren
 - Kubernetes-Deployment mit Kustomize ausrollen
 - Zugriff ueber `http://<serveradresse>:30080`
+- optionaler Lichess-Bot-Service unter `/api/lichess/`
 
 Wichtig:
 
@@ -213,6 +214,7 @@ deploy/k8s/base/
   model.yaml
   playerservice.yaml
   controller.yaml
+  lichess.yaml
   frontend.yaml
   kustomization.yaml
 
@@ -238,6 +240,9 @@ sudo docker build -f Dockerfile.playerservice \
 
 sudo docker build -f Dockerfile.stockfish \
   -t localhost/alu-chess-stockfish:$TAG .
+
+sudo docker build -f Dockerfile.lichess \
+  -t localhost/alu-chess-lichess:$TAG .
 ```
 
 Frontend-Image:
@@ -257,6 +262,7 @@ sudo docker save \
   localhost/alu-chess-model:$TAG \
   localhost/alu-chess-playerservice:$TAG \
   localhost/alu-chess-stockfish:$TAG \
+  localhost/alu-chess-lichess:$TAG \
   localhost/alu-chess-frontend:$TAG \
   | sudo k3s ctr -n k8s.io images import -
 ```
@@ -311,6 +317,20 @@ kubectl create secret generic alu-chess-secrets \
   --dry-run=client -o yaml | kubectl apply -f -
 ```
 
+Optional: Wenn der Lichess-Bot aktiv mit lichess.org verbunden werden soll, fuege den Bot-Token in dasselbe Secret ein:
+
+```bash
+kubectl create secret generic alu-chess-secrets \
+  --namespace alu-chess \
+  --from-literal=MONGO_USER="$MONGO_USER" \
+  --from-literal=MONGO_PASSWORD="$MONGO_PASSWORD" \
+  --from-literal=MONGO_URI="$MONGO_URI" \
+  --from-literal=LICHESS_BOT_TOKEN="<lichess-bot-token>" \
+  --dry-run=client -o yaml | kubectl apply -f -
+```
+
+Ohne `LICHESS_BOT_TOKEN` startet der Lichess-Service trotzdem, laeuft aber im deaktivierten Modus.
+
 ## 11. Deployment ausrollen
 
 ```bash
@@ -326,6 +346,7 @@ kubectl rollout status deployment/stockfish -n alu-chess
 kubectl rollout status deployment/model -n alu-chess
 kubectl rollout status deployment/playerservice -n alu-chess
 kubectl rollout status deployment/controller -n alu-chess
+kubectl rollout status deployment/lichess -n alu-chess
 kubectl rollout status deployment/frontend -n alu-chess
 ```
 
@@ -347,6 +368,7 @@ kubectl logs -n alu-chess deployment/controller
 kubectl logs -n alu-chess deployment/model
 kubectl logs -n alu-chess deployment/playerservice
 kubectl logs -n alu-chess deployment/stockfish
+kubectl logs -n alu-chess deployment/lichess
 kubectl logs -n alu-chess statefulset/mongo
 ```
 
@@ -371,6 +393,7 @@ curl http://localhost:30080/
 curl http://localhost:30080/api/controller/state
 curl http://localhost:30080/api/model/new-game
 curl http://localhost:30080/api/model/stockfish/health
+curl http://localhost:30080/api/lichess/status
 ```
 
 Von deinem lokalen Rechner im VPN:
@@ -380,6 +403,7 @@ curl http://$SERVER_HOST:30080/
 curl http://$SERVER_HOST:30080/api/controller/state
 curl http://$SERVER_HOST:30080/api/model/new-game
 curl http://$SERVER_HOST:30080/api/model/stockfish/health
+curl http://$SERVER_HOST:30080/api/lichess/status
 ```
 
 Browser:
@@ -442,6 +466,7 @@ sudo docker build -f Dockerfile.controller -t localhost/alu-chess-controller:$TA
 sudo docker build -f Dockerfile.model -t localhost/alu-chess-model:$TAG .
 sudo docker build -f Dockerfile.playerservice -t localhost/alu-chess-playerservice:$TAG .
 sudo docker build -f Dockerfile.stockfish -t localhost/alu-chess-stockfish:$TAG .
+sudo docker build -f Dockerfile.lichess -t localhost/alu-chess-lichess:$TAG .
 
 cd "$FRONTEND_REPO_PATH"
 sudo docker build -f Dockerfile.frontend -t localhost/alu-chess-frontend:$TAG .
@@ -455,6 +480,7 @@ sudo docker save \
   localhost/alu-chess-model:$TAG \
   localhost/alu-chess-playerservice:$TAG \
   localhost/alu-chess-stockfish:$TAG \
+  localhost/alu-chess-lichess:$TAG \
   localhost/alu-chess-frontend:$TAG \
   | sudo k3s ctr -n k8s.io images import -
 ```
@@ -475,6 +501,7 @@ kubectl rollout restart deployment/controller -n alu-chess
 kubectl rollout restart deployment/model -n alu-chess
 kubectl rollout restart deployment/playerservice -n alu-chess
 kubectl rollout restart deployment/stockfish -n alu-chess
+kubectl rollout restart deployment/lichess -n alu-chess
 ```
 
 ## 16. MongoDB Backup
@@ -510,6 +537,7 @@ kubectl scale deployment/controller --replicas=0 -n alu-chess
 kubectl scale deployment/model --replicas=0 -n alu-chess
 kubectl scale deployment/playerservice --replicas=0 -n alu-chess
 kubectl scale deployment/stockfish --replicas=0 -n alu-chess
+kubectl scale deployment/lichess --replicas=0 -n alu-chess
 kubectl scale statefulset/mongo --replicas=0 -n alu-chess
 ```
 
@@ -521,6 +549,7 @@ kubectl scale deployment/stockfish --replicas=1 -n alu-chess
 kubectl scale deployment/model --replicas=1 -n alu-chess
 kubectl scale deployment/playerservice --replicas=1 -n alu-chess
 kubectl scale deployment/controller --replicas=1 -n alu-chess
+kubectl scale deployment/lichess --replicas=1 -n alu-chess
 kubectl scale deployment/frontend --replicas=1 -n alu-chess
 ```
 
@@ -543,5 +572,6 @@ sudo /usr/local/bin/k3s-uninstall.sh
 - `controller` und `playerservice` bleiben bei `replicas: 1`, weil aktive Spiele und Sessions im Memory liegen.
 - Die App-Images liegen nur lokal auf diesem K3S-Node. Bei mehreren Nodes musst du sie auf jedem Node importieren oder wieder ueber eine Registry bereitstellen.
 - MongoDB speichert abgeschlossene Spiele persistent auf dem K3S-Node.
+- Lichess funktioniert ohne Token nur als gestarteter, aber nicht verbundener Service. Fuer echte Bot-Spiele muss `LICHESS_BOT_TOKEN` im Secret gesetzt werden.
 - Bei Single-Node-K3S ist `local-path` Storage ausreichend, aber Backups sind wichtig.
 - Der Zugriff erfolgt ohne TLS ueber `http://<serveradresse>:30080`.

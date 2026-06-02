@@ -7,4 +7,5 @@ resources:
   - model.yaml
   - playerservice.yaml
   - controller.yaml
+  - lichess.yaml
   - frontend.yaml
