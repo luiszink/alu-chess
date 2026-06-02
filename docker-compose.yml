@@ -158,6 +158,33 @@ services:
         condition: service_healthy
     profiles: ["k6"]
 
+  # ── Lichess Bot Service ────────────────────────────────────────
+  # MVP: auto-accepts casual standard challenges in the configured
+  # time-control range and plays them using chess.model.ai.ChessAI.
+  lichess:
+    build:
+      context: .
+      dockerfile: Dockerfile.lichess
+    expose:
+      - "8085"
+    environment:
+      PORT:                          "8085"
+      LICHESS_BASE_URL:              "https://lichess.org"
+      LICHESS_BOT_TOKEN:             ${LICHESS_BOT_TOKEN:-}
+      LICHESS_AUTO_ACCEPT:           "true"
+      LICHESS_ACCEPT_RATED:          "false"
+      LICHESS_ACCEPT_VARIANTS:       "standard"
+      LICHESS_MIN_INITIAL_SECONDS:   "180"
+      LICHESS_MAX_INITIAL_SECONDS:   "900"
+      LICHESS_MAX_GAMES_CONCURRENT:  "2"
+      AI_TIME_LIMIT_MS:              "2000"
+      AI_MAX_DEPTH:                  "4"
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sf http://localhost:8085/health || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
   # ── Frontend (React + Vite, served via nginx) ──────────────────
   # FRONTEND_CONTEXT wird aus .env gelesen (Pfad zum alu-chess-web Repo)
   frontend:
@@ -169,6 +196,7 @@ services:
     depends_on:
       - controller
       - model
+      - lichess
     healthcheck:
       test: ["CMD-SHELL", "curl -sf http://localhost/ || exit 1"]
       interval: 10s

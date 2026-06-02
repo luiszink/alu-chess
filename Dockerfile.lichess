@@ -1,0 +1,13 @@
+# syntax=docker/dockerfile:1
+FROM sbtscala/scala-sbt:eclipse-temurin-17.0.10_7_1.10.7_3.6.4 AS build
+WORKDIR /workspace
+COPY . .
+RUN sbt --error 'lichess/assembly'
+
+FROM eclipse-temurin:17-jre-alpine
+RUN apk add --no-cache curl
+WORKDIR /app
+COPY --from=build /workspace/lichess/target/scala-3.6.4/*.jar /app/lichess.jar
+ENV PORT=8085
+EXPOSE 8085
+ENTRYPOINT ["java", "-jar", "/app/lichess.jar"]
