@@ -1,0 +1,15 @@
+FROM  sbtscala/scala-sbt:eclipse-temurin-alpine-25.0.1_8_1.12.9_3.3.7 AS builder
+WORKDIR /app
+COPY build.sbt .
+COPY project/ project/
+RUN sbt update
+COPY . .
+RUN sbt playerservice/assembly
+
+FROM eclipse-temurin:21-jre-alpine
+RUN apk add --no-cache curl
+WORKDIR /app
+COPY --from=builder /app/playerservice/target/scala-3.6.4/alu-chess-playerservice-assembly-*.jar app.jar
+EXPOSE 8083
+ENV PORT=8083
+ENTRYPOINT ["java", "-jar", "app.jar"]

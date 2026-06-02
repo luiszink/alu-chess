@@ -1,21 +1,186 @@
+// Explizite Imports, da gatling-sbt sbt-assembly transitiv mitbringt
+// und beide Plugins "assembly" / "assemblyMergeStrategy" in den Scope importieren.
+import sbtassembly.AssemblyPlugin.autoImport.{assembly, assemblyMergeStrategy}
+
 val scala3Version = "3.6.4"
 
+val http4sVersion = "0.23.30"
+val circeVersion  = "0.14.10"
+val slickVersion      = "3.5.2"
+val mongo4catsVersion = "0.7.17"
+val pekkoVersion = "1.6.0"
+
+val assemblySettings = Seq(
+  assembly / assemblyMergeStrategy := {
+    case PathList("META-INF", "services", _*) => MergeStrategy.concat
+    case PathList("META-INF", _*)             => MergeStrategy.discard
+    case "reference.conf"                     => MergeStrategy.concat
+    case _                                    => MergeStrategy.first
+  }
+)
+
+// Shared settings for all subprojects
+lazy val commonSettings = Seq(
+  version      := "0.1.0-SNAPSHOT",
+  scalaVersion := scala3Version,
+  libraryDependencies ++= Seq(
+    "org.scalactic" %% "scalactic" % "3.2.19",
+    "org.scalatest" %% "scalatest" % "3.2.19" % Test,
+  ),
+)
+
+// ── Model module ──────────────────────────────────────────────
+// Pure domain logic (Board, Game, MoveValidator, FEN/PGN, …).
+// Stateless – no dependency on Controller or View.
+lazy val model = project
+  .in(file("model"))
+  .settings(
+    commonSettings,
+    assemblySettings,
+    name := "alu-chess-model",
+    assembly / mainClass := Some("chess.model.api.ModelServer"),
+    libraryDependencies ++= Seq(
+      // Parser combinators for FEN/PGN
+      "org.scala-lang.modules" %% "scala-parser-combinators" % "2.4.0",
+      // JSON (Circe)
+      "io.circe" %% "circe-core"    % circeVersion,
+      "io.circe" %% "circe-generic" % circeVersion,
+      "io.circe" %% "circe-parser"  % circeVersion,
+      // Http4s (REST API for Model-Service)
+      "org.http4s" %% "http4s-ember-server" % http4sVersion,
+      "org.http4s" %% "http4s-ember-client" % http4sVersion,
+      "org.http4s" %% "http4s-circe"        % http4sVersion,
+      "org.http4s" %% "http4s-dsl"          % http4sVersion,
+      // Slick + PostgreSQL (Persistence)
+      "com.typesafe.slick" %% "slick"          % slickVersion,
+      "com.typesafe.slick" %% "slick-hikaricp" % slickVersion,
+      "org.postgresql"      % "postgresql"      % "42.7.4",
+      // MongoDB via mongo4cats (Cats Effect wrapper)
+      "io.github.kirill5k" %% "mongo4cats-core"  % mongo4catsVersion,
+      "io.github.kirill5k" %% "mongo4cats-circe" % mongo4catsVersion,
+    ),
+    coverageMinimumStmtTotal   := 90,
+    coverageMinimumBranchTotal := 90,
+    coverageFailOnMinimum      := true,
+  )
+
+// ── Controller module ─────────────────────────────────────────
+// Game state management, orchestration, Clock, REST API for Web UI.
+// Depends on Model for domain types.
+lazy val controller = project
+  .in(file("controller"))
+  .dependsOn(model, streaming)
+  .settings(
+    commonSettings,
+    assemblySettings,
+    name := "alu-chess-controller",
+    assembly / mainClass := Some("chess.controller.api.ControllerServer"),
+    libraryDependencies ++= Seq(
+      // Swing GUI
+      "org.scala-lang.modules" %% "scala-swing" % "3.0.0",
+      // Http4s (REST API for Controller-Service + HTTP client to call Model-Service)
+      "org.http4s" %% "http4s-ember-server" % http4sVersion,
+      "org.http4s" %% "http4s-ember-client" % http4sVersion,
+      "org.http4s" %% "http4s-circe"        % http4sVersion,
+      "org.http4s" %% "http4s-dsl"          % http4sVersion,
+    ),
+    coverageExcludedPackages := "chess\\.aview\\.gui\\..*;chess\\.Chess\\$package",
+    coverageExcludedFiles    := ".*Chess\\.scala",
+    coverageMinimumStmtTotal   := 90,
+    coverageMinimumBranchTotal := 90,
+    coverageFailOnMinimum      := true,
+  )
+
+// ── PlayerService module ──────────────────────────────────────
+// Player registration and matchmaking. No dependency on model or controller.
+lazy val playerservice = project
+  .in(file("playerservice"))
+  .settings(
+    commonSettings,
+    assemblySettings,
+    name := "alu-chess-playerservice",
+    assembly / mainClass := Some("chess.playerservice.api.PlayerServer"),
+    libraryDependencies ++= Seq(
+      "io.circe" %% "circe-core"    % circeVersion,
+      "io.circe" %% "circe-generic" % circeVersion,
+      "io.circe" %% "circe-parser"  % circeVersion,
+      "org.http4s" %% "http4s-ember-server" % http4sVersion,
+      "org.http4s" %% "http4s-ember-client" % http4sVersion,
+      "org.http4s" %% "http4s-circe"        % http4sVersion,
+      "org.http4s" %% "http4s-dsl"          % http4sVersion,
+    ),
+  )
+
+// ── Streaming module ──────────────────────────────────────────
+// Reactive Streams Pipeline (Pekko Streams) mit Backpressure.
+// Source: DSL-Datei mit Spielzügen → Flow 1: Parsing →
+// Flow 2: Zustandsbehaftet (scan, buffer mit Backpressure) →
+// Flow 3: Evaluation (mapAsync) → Sink: GameStats.
+// Nächste Woche: Source/Sink gegen Kafka tauschen, Flows unverändert.
+lazy val streaming = project
+  .in(file("streaming"))
+  .dependsOn(model)
+  .settings(
+    commonSettings,
+    assemblySettings,
+    name := "alu-chess-streaming",
+    assembly / mainClass := Some("chess.streaming.ChessStreamApp"),
+    libraryDependencies ++= Seq(
+      "org.apache.pekko" %% "pekko-stream"      % pekkoVersion,
+      "org.apache.pekko" %% "pekko-actor-typed" % pekkoVersion,
+      // Nächste Woche Kafka:
+      // "org.apache.pekko" %% "pekko-connectors-kafka" % "1.1.0",
+    ),
+  )
+
+// ── Root aggregate ────────────────────────────────────────────
 lazy val root = project
   .in(file("."))
+  .aggregate(model, controller, playerservice, streaming)
   .settings(
     name := "alu-chess",
-    version := "0.1.0-SNAPSHOT",
-    scalaVersion := scala3Version,
-    libraryDependencies += "org.scalactic" %% "scalactic" % "3.2.19",
-    libraryDependencies += "org.scalatest" %% "scalatest" % "3.2.19" % Test,
-    libraryDependencies += "org.scala-lang.modules" %% "scala-swing" % "3.0.0",
-    // Swing GUI classes and the main entry point cannot be unit-tested headlessly
-    coverageExcludedPackages := "chess\\.aview\\.gui\\..*;chess\\.Chess\\$package",
-    coverageExcludedFiles := ".*Chess\\.scala",
-    // Minimum coverage thresholds: 100% is not achievable with Scala 3 + scoverage due to
-    // pattern match branch instrumentation artifacts and untestable sys.exit in Controller.quit().
-    // All reachable code paths are tested; the ~1% gap consists of dead code branches.
-    coverageMinimumStmtTotal := 90,
-    coverageMinimumBranchTotal := 90,
-    coverageFailOnMinimum := true
+    publish / skip := true,
+    Compile / unmanagedSourceDirectories := Nil,
+    Test / unmanagedSourceDirectories    := Nil,
   )
+
+// ── Benchmark module ──────────────────────────────────────────
+// JMH micro-benchmarks. Bewusst NICHT im root-aggregate, damit
+// `sbt compile` / `sbt test` die Benchmarks nicht triggern.
+// Ausführen mit: sbt "benchmark/Jmh/run"
+lazy val benchmark = project
+  .in(file("benchmark"))
+  .dependsOn(model)
+  .enablePlugins(JmhPlugin)
+  .settings(
+    name            := "alu-chess-benchmark",
+    scalaVersion    := scala3Version,
+    coverageEnabled := false,
+    publish / skip  := true,
+  )
+
+// ── Gatling module ────────────────────────────────────────
+// HTTP-Lasttests, die die k6-Skripte in Gatling-Scala-DSL spiegeln.
+// Bewusst NICHT im root-aggregate. Ausführen mit: sbt gatlingAll
+lazy val gatling = project
+  .in(file("gatling"))
+  .enablePlugins(GatlingPlugin)
+  .settings(
+    name            := "alu-chess-gatling",
+    scalaVersion    := scala3Version,
+    coverageEnabled := false,
+    publish / skip  := true,
+    libraryDependencies ++= Seq(
+      "io.gatling.highcharts" % "gatling-charts-highcharts" % "3.11.5" % "test,it",
+      "io.gatling"            % "gatling-test-framework"    % "3.11.5" % "test,it",
+    ),
+  )
+
+addCommandAlias("gatlingAll", "gatling/Gatling/test")
+
+addCommandAlias(
+  "runAll",
+  ";model/bgRunMain chess.model.api.ModelServer" +
+  " ;playerservice/bgRunMain chess.playerservice.api.PlayerServer" +
+  " ;controller/runMain chess.controller.api.ControllerServer"
+)

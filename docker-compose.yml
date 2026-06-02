@@ -1,0 +1,180 @@
+services:
+
+  # ── PostgreSQL ─────────────────────────────────────────────────
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB:       chess
+      POSTGRES_USER:     chess
+      POSTGRES_PASSWORD: chess
+    ports:
+      - "127.0.0.1:5432:5432" # Für DB-Tools während der Entwicklung lokal erreichbar
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U chess -d chess"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    profiles: ["postgres", "all"]
+
+  # ── MongoDB ────────────────────────────────────────────────────
+  mongo:
+    image: mongo:7-jammy
+    ports:
+      - "127.0.0.1:27017:27017" # Für DB-Tools während der Entwicklung lokal erreichbar
+    volumes:
+      - mongo_data:/data/db
+    healthcheck:
+      test: ["CMD", "mongosh", "--eval", "db.adminCommand('ping')"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    profiles: ["mongo", "all"]
+
+  # ── Stockfish Engine (Python/FastAPI) ──────────────────────────
+  stockfish:
+    build:
+      context: .
+      dockerfile: Dockerfile.stockfish
+    expose:
+      - "8000"
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sf http://localhost:8000/health || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # ── Model Service ──────────────────────────────────────────────
+  model:
+    build:
+      context: .
+      dockerfile: Dockerfile.model
+    expose:
+      - "8082"
+    environment:
+      PORT:            "8082"
+      ENGINE_BASE_URL: http://stockfish:8000
+    depends_on:
+      stockfish:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sf http://localhost:8082/health || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  # ── Controller Service ─────────────────────────────────────────
+  # DB_TYPE wird aus .env gelesen (postgres | mongo | memory)
+  controller:
+    build:
+      context: .
+      dockerfile: Dockerfile.controller
+    expose:
+      - "8081"
+    environment:
+      PORT:               "8081"
+      PLAYER_SERVICE_URL: http://playerservice:8083
+      DB_TYPE:            ${DB_TYPE}
+      # PostgreSQL
+      DB_URL:      ${DB_URL}
+      DB_USER:     ${DB_USER}
+      DB_PASSWORD: ${DB_PASSWORD}
+      # MongoDB
+      MONGO_URI:   ${MONGO_URI}
+      MONGO_DB:    ${MONGO_DB}
+    depends_on:
+      model:
+        condition: service_healthy
+      playerservice:
+        condition: service_healthy
+        required: false
+      postgres:
+        condition: service_healthy
+        required: false
+      mongo:
+        condition: service_healthy
+        required: false
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sf http://localhost:8081/health || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  # ── PlayerService ──────────────────────────────────────────────
+  playerservice:
+    build:
+      context: .
+      dockerfile: Dockerfile.playerservice
+    expose:
+      - "8083"
+    environment:
+      PORT: "8083"
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sf http://localhost:8083/health || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  # ── Kafka (nächste Woche) ──────────────────────────────────────
+  # Profil "kafka" – startet nicht automatisch mit den anderen Services.
+  # Source/Sink in ChessStreamApp.run() gegen Kafka-Connector tauschen:
+  #   Source: Consumer.plainSource(settings, Subscriptions.topics("chess-moves"))
+  #   Sink:   Producer.plainSink(settings)
+  #   docker compose --profile kafka up
+  # kafka:
+  #   image: confluentinc/cp-kafka:7.6.0
+  #   environment:
+  #     KAFKA_NODE_ID: 1
+  #     KAFKA_PROCESS_ROLES: broker,controller
+  #     KAFKA_LISTENERS: PLAINTEXT://:9092,CONTROLLER://:9093
+  #     KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:9092
+  #     KAFKA_CONTROLLER_QUORUM_VOTERS: 1@kafka:9093
+  #     KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: PLAINTEXT:PLAINTEXT,CONTROLLER:PLAINTEXT
+  #     CLUSTER_ID: "chess-cluster-01"
+  #   expose:
+  #     - "9092"
+  #   healthcheck:
+  #     test: ["CMD-SHELL", "kafka-broker-api-versions.sh --bootstrap-server localhost:9092 || exit 1"]
+  #     interval: 10s
+  #     timeout: 5s
+  #     retries: 10
+  #   profiles: ["kafka"]
+
+  # ── k6 Load / Smoke Tests ──────────────────────────────────────
+  # Profil "k6" – startet nicht automatisch mit den anderen Services.
+  # Skript per K6_SCRIPT-Variable wählbar, Standard: smoke.js
+  #   docker compose --profile k6 run --rm k6
+  #   docker compose --profile k6 run --rm k6 run /scripts/controller.js
+  k6:
+    image: grafana/k6:latest
+    volumes:
+      - ./k6/scripts:/scripts
+    environment:
+      BASE_URL: http://frontend:80
+    command: run /scripts/smoke.js
+    depends_on:
+      frontend:
+        condition: service_healthy
+    profiles: ["k6"]
+
+  # ── Frontend (React + Vite, served via nginx) ──────────────────
+  # FRONTEND_CONTEXT wird aus .env gelesen (Pfad zum alu-chess-web Repo)
+  frontend:
+    build:
+      context: ${FRONTEND_CONTEXT}
+      dockerfile: Dockerfile.frontend
+    ports:
+      - "3000:80"
+    depends_on:
+      - controller
+      - model
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sf http://localhost/ || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+volumes:
+  postgres_data:
+  mongo_data:
