@@ -1,0 +1,62 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: model
+  namespace: chess
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: model
+  template:
+    metadata:
+      labels:
+        app: model
+    spec:
+      imagePullSecrets:
+        - name: ghcr-secret
+      containers:
+        - name: model
+          image: ghcr.io/luiszink/alu-chess/model:latest
+          imagePullPolicy: Always
+          ports:
+            - containerPort: 8082
+          env:
+            - name: PORT
+              value: "8082"
+            - name: ENGINE_BASE_URL
+              valueFrom:
+                configMapKeyRef:
+                  name: chess-config
+                  key: ENGINE_BASE_URL
+          resources:
+            requests:
+              cpu: "250m"
+              memory: "384Mi"
+            limits:
+              cpu: "1000m"
+              memory: "768Mi"
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: 8082
+            initialDelaySeconds: 40
+            periodSeconds: 10
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: 8082
+            initialDelaySeconds: 30
+            periodSeconds: 5
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: model
+  namespace: chess
+spec:
+  selector:
+    app: model
+  ports:
+    - port: 8082
+      targetPort: 8082

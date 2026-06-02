@@ -1,0 +1,23 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: chess-config
+  namespace: chess
+data:
+  ENGINE_BASE_URL:    "http://stockfish:8000"
+  PLAYER_SERVICE_URL: "http://playerservice:8083"
+  DB_TYPE:            "memory"
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: chess-db-secret
+  namespace: chess
+type: Opaque
+data:
+  # Werte sind base64-kodiert: echo -n "chess" | base64
+  DB_USER:     Y2hlc3M=
+  DB_PASSWORD: Y2hlc3M=
+  DB_URL:      amRiYzpwb3N0Z3Jlc3FsOi8vcG9zdGdyZXM6NTQzMi9jaGVzcw==
+  MONGO_URI:   bW9uZ29kYjovL21vbmdvOjI3MDE3
+  MONGO_DB:    Y2hlc3M=
