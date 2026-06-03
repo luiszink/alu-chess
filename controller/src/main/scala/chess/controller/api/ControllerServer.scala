@@ -24,6 +24,7 @@ import chess.tournament.model.BotStatus
 import chess.util.Observer
 import org.apache.pekko.actor.typed.ActorSystem
 import org.apache.pekko.actor.typed.scaladsl.Behaviors
+import scala.concurrent.duration.Duration
 
 object ControllerServer extends IOApp:
 
@@ -67,7 +68,7 @@ object ControllerServer extends IOApp:
     val port = sys.env.getOrElse("PORT", "8081").toInt
 
     makeRepository.use { repo =>
-      EmberClientBuilder.default[IO].build.use { httpClient =>
+      EmberClientBuilder.default[IO].withTimeout(Duration.Inf).build.use { httpClient =>
         for
           ctrl        <- IO(Controller(repo))
           pekkoSystem <- IO(ActorSystem[Nothing](Behaviors.empty, "chess-stream"))
