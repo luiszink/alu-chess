@@ -2,134 +2,114 @@ name: Deploy
 
 on:
   push:
-    branches: [ "main" ]
-  workflow_dispatch: {}  # Manuell auslösbar über GitHub UI
+    branches: ["main"]
+  workflow_dispatch: {}
 
 permissions:
-  contents: read
-  packages: write   # ghcr.io push
+  contents: write
+  packages: write
 
 env:
   REGISTRY: ghcr.io
   IMAGE_PREFIX: ghcr.io/luiszink/alu-chess
+  IMAGE_TAG: sha-${{ github.sha }}
+  VALUES_FILE: deploy/helm/alu-chess/values-prod.yaml
 
 jobs:
-  # ─────────────────────────────────────────────────────────────────────────
-  # Job 1: Docker Images bauen und zu ghcr.io pushen
-  # Läuft auf GitHub's Servern (gratis, schnell)
-  # ─────────────────────────────────────────────────────────────────────────
   build-and-push:
-    name: Build & Push Images
+    name: Build and push backend images
     runs-on: ubuntu-latest
 
     steps:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Login zu GitHub Container Registry
+      - name: Login to GitHub Container Registry
         uses: docker/login-action@v3
         with:
           registry: ${{ env.REGISTRY }}
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Set up Docker Buildx (schnellere Builds mit Cache)
+      - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
 
-      - name: Build & Push stockfish
+      - name: Build and push stockfish
         uses: docker/build-push-action@v5
         with:
           context: .
           file: Dockerfile.stockfish
           push: true
-          tags: ${{ env.IMAGE_PREFIX }}/stockfish:latest
+          tags: |
+            ${{ env.IMAGE_PREFIX }}/stockfish:${{ env.IMAGE_TAG }}
+            ${{ env.IMAGE_PREFIX }}/stockfish:latest
           cache-from: type=gha,scope=stockfish
-          cache-to:   type=gha,scope=stockfish,mode=max
+          cache-to: type=gha,scope=stockfish,mode=max
 
-      - name: Build & Push model
+      - name: Build and push model
         uses: docker/build-push-action@v5
         with:
           context: .
           file: Dockerfile.model
           push: true
-          tags: ${{ env.IMAGE_PREFIX }}/model:latest
+          tags: |
+            ${{ env.IMAGE_PREFIX }}/model:${{ env.IMAGE_TAG }}
+            ${{ env.IMAGE_PREFIX }}/model:latest
           cache-from: type=gha,scope=model
-          cache-to:   type=gha,scope=model,mode=max
+          cache-to: type=gha,scope=model,mode=max
 
-      - name: Build & Push playerservice
+      - name: Build and push playerservice
         uses: docker/build-push-action@v5
         with:
           context: .
           file: Dockerfile.playerservice
           push: true
-          tags: ${{ env.IMAGE_PREFIX }}/playerservice:latest
+          tags: |
+            ${{ env.IMAGE_PREFIX }}/playerservice:${{ env.IMAGE_TAG }}
+            ${{ env.IMAGE_PREFIX }}/playerservice:latest
           cache-from: type=gha,scope=playerservice
-          cache-to:   type=gha,scope=playerservice,mode=max
+          cache-to: type=gha,scope=playerservice,mode=max
 
-      - name: Build & Push controller
+      - name: Build and push controller
         uses: docker/build-push-action@v5
         with:
           context: .
           file: Dockerfile.controller
           push: true
-          tags: ${{ env.IMAGE_PREFIX }}/controller:latest
+          tags: |
+            ${{ env.IMAGE_PREFIX }}/controller:${{ env.IMAGE_TAG }}
+            ${{ env.IMAGE_PREFIX }}/controller:latest
           cache-from: type=gha,scope=controller
-          cache-to:   type=gha,scope=controller,mode=max
+          cache-to: type=gha,scope=controller,mode=max
 
-  # ─────────────────────────────────────────────────────────────────────────
-  # Job 2: Auf dem Server deployen
-  # Läuft auf dem Self-hosted Runner, der direkt Zugriff auf k3d hat
-  # ─────────────────────────────────────────────────────────────────────────
-  deploy:
-    name: Deploy to Server
-    runs-on: self-hosted   # ← läuft auf eurem Hochschul-Server
-    needs: build-and-push  # ← erst nach erfolgreichem Build
+      - name: Build and push lichess
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          file: Dockerfile.lichess
+          push: true
+          tags: |
+            ${{ env.IMAGE_PREFIX }}/lichess:${{ env.IMAGE_TAG }}
+            ${{ env.IMAGE_PREFIX }}/lichess:latest
+          cache-from: type=gha,scope=lichess
+          cache-to: type=gha,scope=lichess,mode=max
 
-    steps:
-      - name: Checkout (für k8s/ Manifests)
-        uses: actions/checkout@v4
-
-      - name: Cluster prüfen / erstellen
+      - name: Update backend image tags for Argo CD
         run: |
-          if ! k3d cluster list | grep -q "^chess"; then
-            echo "Cluster existiert nicht – erstelle ihn..."
-            k3d cluster create chess --port "8081:30081@loadbalancer" --agents 1
-          else
-            echo "Cluster läuft bereits."
+          for service in stockfish model playerservice controller lichess; do
+            sed -i "/^  ${service}:$/,/^  [a-z]/ s/tag: .*/tag: ${IMAGE_TAG}/" "${VALUES_FILE}"
+          done
+
+      - name: Commit GitOps update
+        run: |
+          if git diff --quiet -- "${VALUES_FILE}"; then
+            echo "No GitOps changes to commit."
+            exit 0
           fi
 
-      - name: ghcr.io Image-Pull-Secret sicherstellen
-        run: |
-          kubectl create namespace chess --dry-run=client -o yaml | kubectl apply -f -
-          kubectl create secret docker-registry ghcr-secret \
-            --docker-server=ghcr.io \
-            --docker-username=${{ github.actor }} \
-            --docker-password=${{ secrets.GITHUB_TOKEN }} \
-            --namespace=chess \
-            --dry-run=client -o yaml | kubectl apply -f -
-
-      - name: k8s Manifests anwenden
-        run: |
-          kubectl apply -f k8s/namespace.yaml
-          kubectl apply -n chess -f k8s/configmap.yaml
-          kubectl apply -n chess -f k8s/stockfish.yaml
-          kubectl apply -n chess -f k8s/playerservice.yaml
-          kubectl apply -n chess -f k8s/model.yaml
-          kubectl apply -n chess -f k8s/controller.yaml
-
-      - name: Rollout aller Deployments anstoßen
-        run: |
-          kubectl rollout restart deployment/stockfish     -n chess
-          kubectl rollout restart deployment/playerservice -n chess
-          kubectl rollout restart deployment/model         -n chess
-          kubectl rollout restart deployment/controller    -n chess
-
-      - name: Warten bis alles bereit ist
-        run: |
-          kubectl rollout status deployment/stockfish     -n chess --timeout=180s
-          kubectl rollout status deployment/playerservice -n chess --timeout=180s
-          kubectl rollout status deployment/model         -n chess --timeout=180s
-          kubectl rollout status deployment/controller    -n chess --timeout=180s
-
-      - name: Deployment-Status ausgeben
-        run: kubectl get pods -n chess
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add "${VALUES_FILE}"
+          git commit -m "chore(gitops): update backend images to ${IMAGE_TAG} [skip ci]"
+          git pull --rebase
+          git push
