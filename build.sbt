@@ -159,10 +159,35 @@ lazy val lichess = project
     coverageEnabled := false,
   )
 
+// ── Tournament module ─────────────────────────────────────────
+// Microservice that connects to NowChess Tournament API:
+//   - Registers bot, joins/creates tournaments
+//   - Streams tournament events and plays games using chess.model.ai.ChessAI
+//   - Exposes a REST + SSE facade + simple HTML control UI
+lazy val tournament = project
+  .in(file("tournament"))
+  .dependsOn(model)
+  .settings(
+    commonSettings,
+    assemblySettings,
+    name := "alu-chess-tournament",
+    assembly / mainClass := Some("chess.tournament.api.TournamentServer"),
+    libraryDependencies ++= Seq(
+      "io.circe" %% "circe-core"    % circeVersion,
+      "io.circe" %% "circe-generic" % circeVersion,
+      "io.circe" %% "circe-parser"  % circeVersion,
+      "org.http4s" %% "http4s-ember-server" % http4sVersion,
+      "org.http4s" %% "http4s-ember-client" % http4sVersion,
+      "org.http4s" %% "http4s-circe"        % http4sVersion,
+      "org.http4s" %% "http4s-dsl"          % http4sVersion,
+    ),
+    coverageEnabled := false,
+  )
+
 // ── Root aggregate ────────────────────────────────────────────
 lazy val root = project
   .in(file("."))
-  .aggregate(model, controller, playerservice, streaming, lichess)
+  .aggregate(model, controller, playerservice, streaming, lichess, tournament)
   .settings(
     name := "alu-chess",
     publish / skip := true,

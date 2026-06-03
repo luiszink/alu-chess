@@ -1,0 +1,236 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>alu-chess Tournament</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: system-ui, sans-serif; background: #1a1a2e; color: #e0e0e0; min-height: 100vh; }
+    header { background: #16213e; padding: 1rem 2rem; display: flex; align-items: center; gap: 1rem; border-bottom: 2px solid #0f3460; }
+    header h1 { font-size: 1.4rem; color: #e94560; }
+    .status-pill { padding: .25rem .75rem; border-radius: 999px; font-size: .8rem; font-weight: 600; }
+    .status-idle    { background: #334; color: #aaa; }
+    .status-playing { background: #0a3; color: #fff; }
+    .status-error   { background: #a30; color: #fff; }
+    main { display: grid; grid-template-columns: 1fr 1fr; gap: 1.5rem; padding: 1.5rem; max-width: 1200px; margin: 0 auto; }
+    section { background: #16213e; border-radius: 8px; padding: 1.25rem; border: 1px solid #0f3460; }
+    section h2 { font-size: 1rem; color: #e94560; margin-bottom: 1rem; }
+    .full-width { grid-column: 1 / -1; }
+    label { display: block; font-size: .8rem; color: #aaa; margin-bottom: .25rem; margin-top: .75rem; }
+    input, select { width: 100%; padding: .4rem .6rem; border-radius: 4px; border: 1px solid #0f3460; background: #1a1a2e; color: #e0e0e0; font-size: .9rem; }
+    button { margin-top: .75rem; padding: .5rem 1.25rem; border-radius: 4px; border: none; cursor: pointer; font-size: .9rem; font-weight: 600; transition: opacity .15s; }
+    button:hover { opacity: .85; }
+    .btn-primary   { background: #e94560; color: #fff; }
+    .btn-secondary { background: #0f3460; color: #e0e0e0; }
+    .btn-success   { background: #0a3; color: #fff; }
+    .tournament-list { display: flex; flex-direction: column; gap: .5rem; max-height: 280px; overflow-y: auto; }
+    .t-card { background: #1a1a2e; border: 1px solid #0f3460; border-radius: 6px; padding: .75rem 1rem; display: flex; justify-content: space-between; align-items: center; }
+    .t-card-info { font-size: .85rem; }
+    .t-card-id   { font-size: .7rem; color: #888; font-family: monospace; }
+    .t-card-actions { display: flex; gap: .5rem; }
+    .t-card-actions button { margin-top: 0; padding: .3rem .75rem; font-size: .8rem; }
+    .badge { font-size: .7rem; padding: .1rem .4rem; border-radius: 4px; }
+    .badge-created  { background: #334; color: #aaa; }
+    .badge-started  { background: #0a3; color: #fff; }
+    .badge-finished { background: #555; color: #ccc; }
+    #logs { background: #0d0d1a; border-radius: 6px; padding: 1rem; font-family: monospace; font-size: .8rem; height: 260px; overflow-y: auto; border: 1px solid #0f3460; }
+    #logs p { margin-bottom: .2rem; color: #7cf; }
+    #logs p.err { color: #f77; }
+    .stat-row { display: flex; justify-content: space-between; padding: .4rem 0; border-bottom: 1px solid #0f3460; font-size: .9rem; }
+    .stat-row:last-child { border: none; }
+    .stat-val { color: #e94560; font-weight: 600; }
+    #refresh-btn { float: right; margin-top: 0; padding: .3rem .75rem; font-size: .8rem; }
+  </style>
+</head>
+<body>
+
+<header>
+  <h1>♟ alu-chess Tournament</h1>
+  <span id="status-pill" class="status-pill status-idle">idle</span>
+  <span id="status-detail" style="font-size:.8rem;color:#aaa;margin-left:.5rem;"></span>
+</header>
+
+<main>
+
+  <!-- Status -->
+  <section>
+    <h2>Bot Status</h2>
+    <div id="status-stats">
+      <div class="stat-row"><span>Status</span><span class="stat-val" id="s-status">idle</span></div>
+      <div class="stat-row"><span>Tournament</span><span class="stat-val" id="s-tid">—</span></div>
+      <div class="stat-row"><span>Runde</span><span class="stat-val" id="s-round">—</span></div>
+      <div class="stat-row"><span>Aktive Spiele</span><span class="stat-val" id="s-games">—</span></div>
+    </div>
+  </section>
+
+  <!-- Connect bot -->
+  <section>
+    <h2>Bot verbinden</h2>
+    <label>Tournament-ID</label>
+    <input id="connect-id" placeholder="z.B. t7kXq2" />
+    <button class="btn-primary" onclick="connectBot()">Bot starten</button>
+
+    <div style="margin-top:1rem;border-top:1px solid #0f3460;padding-top:1rem;">
+      <label>Tournament starten (Director)</label>
+      <input id="start-id" placeholder="Tournament-ID" />
+      <button class="btn-success" onclick="startTournament()">Starten</button>
+    </div>
+  </section>
+
+  <!-- Tournaments -->
+  <section class="full-width">
+    <h2>Tournaments
+      <button id="refresh-btn" class="btn-secondary" onclick="loadTournaments()">Aktualisieren</button>
+    </h2>
+    <div id="tournament-list" class="tournament-list">
+      <p style="color:#888;font-size:.85rem;">Lädt...</p>
+    </div>
+  </section>
+
+  <!-- Create -->
+  <section>
+    <h2>Tournament erstellen</h2>
+    <label>Name</label>
+    <input id="c-name" value="alu-chess Bot Battle" />
+    <label>Runden</label>
+    <input id="c-rounds" type="number" value="5" min="1" />
+    <label>Bedenkzeit (Sekunden)</label>
+    <input id="c-clock" type="number" value="300" min="30" />
+    <label>Inkrement (Sekunden)</label>
+    <input id="c-inc" type="number" value="3" min="0" />
+    <label>Format</label>
+    <select id="c-format">
+      <option value="swiss">Swiss</option>
+      <option value="singleElimination">Single Elimination</option>
+      <option value="doubleElimination">Double Elimination</option>
+      <option value="league">League</option>
+    </select>
+    <button class="btn-primary" onclick="createTournament()">Erstellen</button>
+  </section>
+
+  <!-- Logs -->
+  <section>
+    <h2>Bot Log (Live)</h2>
+    <div id="logs"><p>Warte auf Log-Einträge...</p></div>
+  </section>
+
+</main>
+
+<script>
+  const API = '';  // same origin
+
+  // ── Status polling ──────────────────────────────────────────────────────────
+  async function pollStatus() {
+    try {
+      const r = await fetch(`${API}/api/tournament/status`);
+      const d = await r.json();
+      document.getElementById('s-status').textContent = d.status;
+      document.getElementById('s-tid').textContent    = d.tournamentId ?? '—';
+      document.getElementById('s-round').textContent  = d.round != null ? d.round : '—';
+      document.getElementById('s-games').textContent  = d.gamesActive != null ? d.gamesActive : '—';
+      const pill = document.getElementById('status-pill');
+      const det  = document.getElementById('status-detail');
+      pill.className = 'status-pill status-' + d.status;
+      pill.textContent = d.status;
+      det.textContent  = d.tournamentId ? `Tournament: ${d.tournamentId}` : '';
+    } catch(e) { /* ignore */ }
+  }
+  setInterval(pollStatus, 3000);
+  pollStatus();
+
+  // ── Tournament list ─────────────────────────────────────────────────────────
+  async function loadTournaments() {
+    const el = document.getElementById('tournament-list');
+    el.innerHTML = '<p style="color:#888;font-size:.85rem;">Lädt...</p>';
+    try {
+      const r = await fetch(`${API}/api/tournament/list`);
+      const d = await r.json();
+      const all = [
+        ...d.created.map(t  => ({...t, _status:'created'})),
+        ...d.started.map(t  => ({...t, _status:'started'})),
+        ...d.finished.map(t => ({...t, _status:'finished'})),
+      ];
+      if (!all.length) { el.innerHTML = '<p style="color:#888;font-size:.85rem;">Keine Tournaments gefunden</p>'; return; }
+      el.innerHTML = all.map(t => `
+        <div class="t-card">
+          <div class="t-card-info">
+            <strong>${t.name}</strong>
+            <span class="badge badge-${t._status}">${t._status}</span><br/>
+            <span class="t-card-id">${t.id}</span> · ${t.players} Spieler · ${t.rounds} Runden · ${t.format}
+          </div>
+          <div class="t-card-actions">
+            <button class="btn-secondary" onclick="setId('connect-id','${t.id}')">Verbinden</button>
+            ${t._status === 'created' ? `<button class="btn-success" onclick="quickStart('${t.id}')">Start</button>` : ''}
+          </div>
+        </div>`).join('');
+    } catch(e) {
+      el.innerHTML = `<p class="err">Fehler: ${e.message}</p>`;
+    }
+  }
+  loadTournaments();
+
+  // ── Actions ─────────────────────────────────────────────────────────────────
+  async function connectBot() {
+    const id = document.getElementById('connect-id').value.trim();
+    if (!id) return alert('Bitte Tournament-ID eingeben');
+    const r = await fetch(`${API}/api/tournament/connect/${id}`, {method:'POST'});
+    const d = await r.json();
+    log(r.ok ? `Bot verbunden mit ${id}` : `Fehler: ${d.error}`, !r.ok);
+    if (r.ok) loadTournaments();
+  }
+
+  async function startTournament() {
+    const id = document.getElementById('start-id').value.trim();
+    if (!id) return alert('Bitte Tournament-ID eingeben');
+    const r = await fetch(`${API}/api/tournament/start/${id}`, {method:'POST'});
+    const d = await r.json();
+    log(r.ok ? `Tournament ${id} gestartet` : `Fehler: ${d.error}`, !r.ok);
+    if (r.ok) loadTournaments();
+  }
+
+  async function createTournament() {
+    const body = {
+      name: document.getElementById('c-name').value,
+      nbRounds: +document.getElementById('c-rounds').value,
+      clockLimit: +document.getElementById('c-clock').value,
+      clockIncrement: +document.getElementById('c-inc').value,
+      format: document.getElementById('c-format').value,
+    };
+    const r = await fetch(`${API}/api/tournament/create`, {
+      method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(body),
+    });
+    const d = await r.json();
+    log(r.ok ? `Tournament erstellt: ${d.id ?? JSON.stringify(d)}` : `Fehler: ${d.error}`, !r.ok);
+    if (r.ok) loadTournaments();
+  }
+
+  function quickStart(id) {
+    document.getElementById('start-id').value = id;
+    startTournament();
+  }
+
+  function setId(field, val) {
+    document.getElementById(field).value = val;
+  }
+
+  // ── Log helpers ─────────────────────────────────────────────────────────────
+  function log(msg, isErr = false) {
+    const el = document.getElementById('logs');
+    const p  = document.createElement('p');
+    if (isErr) p.className = 'err';
+    p.textContent = `[${new Date().toLocaleTimeString()}] ${msg}`;
+    el.appendChild(p);
+    el.scrollTop = el.scrollHeight;
+  }
+
+  // ── SSE log stream ──────────────────────────────────────────────────────────
+  function connectLogs() {
+    const es = new EventSource(`${API}/api/tournament/logs`);
+    es.onmessage = e => log(e.data);
+    es.onerror   = () => { es.close(); setTimeout(connectLogs, 3000); };
+  }
+  connectLogs();
+</script>
+</body>
+</html>
