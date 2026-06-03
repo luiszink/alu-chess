@@ -22,7 +22,9 @@ final class TournamentApiClient(
 ):
 
   private var _token: String = ""
+  private var _identity: Option[BotIdentity] = None
   def hasToken: Boolean = _token.nonEmpty
+  def identity: Option[BotIdentity] = _identity
   private def auth: Header.ToRaw = Authorization(Credentials.Token(AuthScheme.Bearer, _token))
   private def authed(req: Request[IO]): Request[IO] =
     if hasToken then req.putHeaders(auth) else req
@@ -36,7 +38,8 @@ final class TournamentApiClient(
     rawString(req).flatMap { raw =>
       parse[RegisterResponse](raw).flatMap { resp =>
         _token = resp.token
-        IO.pure(BotIdentity(resp.id, name, resp.token))
+        _identity = Some(BotIdentity(resp.id, name, resp.token))
+        IO.pure(_identity.get)
       }
     }
 
