@@ -1,0 +1,6 @@
+apiVersion: v2
+name: alu-chess
+description: Helm chart for the alu-chess microservices
+type: application
+version: 0.1.0
+appVersion: "0.1.0"
