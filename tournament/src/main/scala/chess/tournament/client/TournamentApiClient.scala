@@ -10,6 +10,7 @@ import org.http4s.Method.*
 import org.http4s.client.Client
 import org.http4s.headers.Authorization
 import org.http4s.circe.*
+import org.typelevel.ci.CIStringSyntax
 
 /** HTTP client for the NowChess Tournament API.
   *
@@ -21,14 +22,16 @@ final class TournamentApiClient(
 ):
 
   private var _token: String = ""
+  def hasToken: Boolean = _token.nonEmpty
   private def auth: Header.ToRaw = Authorization(Credentials.Token(AuthScheme.Bearer, _token))
-  private def authed(req: Request[IO]): Request[IO] = req.putHeaders(auth)
+  private def authed(req: Request[IO]): Request[IO] =
+    if hasToken then req.putHeaders(auth) else req
 
   // ── Auth ────────────────────────────────────────────────────────────────
 
   /** Register a bot identity and store the JWT for subsequent requests. */
-  def register(name: String): IO[BotIdentity] =
-    val body = Json.obj("name" -> Json.fromString(name), "isBot" -> Json.fromBoolean(true))
+  def register(name: String, isBot: Boolean = true): IO[BotIdentity] =
+    val body = Json.obj("name" -> Json.fromString(name), "isBot" -> Json.fromBoolean(isBot))
     val req  = Request[IO](POST, baseUri / "api" / "auth" / "register").withEntity(body)
     rawString(req).flatMap { raw =>
       parse[RegisterResponse](raw).flatMap { resp =>
@@ -61,14 +64,24 @@ final class TournamentApiClient(
       clockLimit: Int,
       clockIncrement: Int,
       format: String = "swiss",
+      rated: Option[Boolean] = None,
+      startPosition: Option[String] = None,
+      matchesPerPairing: Option[Int] = None,
+      groupSize: Option[Int] = None,
   ): IO[Json] =
-    val form = UrlForm(
-      "name"           -> name,
-      "nbRounds"       -> nbRounds.toString,
-      "clockLimit"     -> clockLimit.toString,
-      "clockIncrement" -> clockIncrement.toString,
-      "format"         -> format,
-    )
+    val fields =
+      List(
+        "name"           -> name,
+        "nbRounds"       -> nbRounds.toString,
+        "clockLimit"     -> clockLimit.toString,
+        "clockIncrement" -> clockIncrement.toString,
+        "format"         -> format,
+      ) ++
+        rated.map(v => "rated" -> v.toString) ++
+        startPosition.map(v => "startPosition" -> v) ++
+        matchesPerPairing.map(v => "matchesPerPairing" -> v.toString) ++
+        groupSize.map(v => "groupSize" -> v.toString)
+    val form = UrlForm(fields*)
     val req = authed(Request[IO](POST, baseUri / "api" / "tournament").withEntity(form))
     rawString(req).flatMap(parseJson)
 
@@ -82,6 +95,22 @@ final class TournamentApiClient(
 
   def getTournament(id: String): IO[Json] =
     val req = Request[IO](GET, baseUri / "api" / "tournament" / id)
+    rawString(req).flatMap(parseJson)
+
+  def deleteTournament(id: String): IO[Unit] =
+    val req = authed(Request[IO](DELETE, baseUri / "api" / "tournament" / id))
+    rawString(req).void
+
+  def withdrawTournament(id: String): IO[Unit] =
+    val req = authed(Request[IO](POST, baseUri / "api" / "tournament" / id / "withdraw"))
+    rawString(req).void
+
+  def roundPairings(id: String, round: Int): IO[Json] =
+    val req = Request[IO](GET, baseUri / "api" / "tournament" / id / "round" / round.toString)
+    rawString(req).flatMap(parseJson)
+
+  def getGame(tournamentId: String, gameId: String): IO[Json] =
+    val req = Request[IO](GET, baseUri / "api" / "tournament" / tournamentId / "game" / gameId)
     rawString(req).flatMap(parseJson)
 
   // ── Move submission ───────────────────────────────────────────────────────
@@ -105,6 +134,29 @@ final class TournamentApiClient(
       baseUri / "api" / "tournament" / tournamentId / "game" / gameId / "stream",
     ))
     ndjson(req).evalMap(decode[GameEvent])
+
+  def results(tournamentId: String, nb: Option[Int]): fs2.Stream[IO, String] =
+    val uri0 = baseUri / "api" / "tournament" / tournamentId / "results"
+    val uri  = nb.fold(uri0)(n => uri0.withQueryParam("nb", n))
+    ndjson(Request[IO](GET, uri))
+
+  def exportGames(tournamentId: String, ndjsonFormat: Boolean): IO[String] =
+    val accept =
+      if ndjsonFormat then "application/x-ndjson" else "application/x-chess-pgn"
+    val req = Request[IO](GET, baseUri / "api" / "tournament" / tournamentId / "export" / "games")
+      .putHeaders(Header.Raw(ci"Accept", accept))
+    rawString(req)
+
+  def streamTournamentRaw(tournamentId: String): fs2.Stream[IO, String] =
+    val req = authed(Request[IO](GET, baseUri / "api" / "tournament" / tournamentId / "stream"))
+    ndjson(req)
+
+  def streamGameRaw(tournamentId: String, gameId: String): fs2.Stream[IO, String] =
+    val req = authed(Request[IO](
+      GET,
+      baseUri / "api" / "tournament" / tournamentId / "game" / gameId / "stream",
+    ))
+    ndjson(req)
 
   // ── Internals ─────────────────────────────────────────────────────────────
 
