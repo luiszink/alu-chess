@@ -10,7 +10,7 @@ Kurzreferenz: Was läuft wo, wie wird es gestartet (Docker **oder** rein lokal).
 | 2 | **Controller** | `alu-chess/controller/` | Scala (http4s) | 8081 | Spielzustand, Verlauf, SSE, ruft Model auf |
 | 3 | **Model** | `alu-chess/model/` | Scala (http4s) | 8082 | Schachregeln, FEN/PGN, Best-Move-Bridge zu Stockfish |
 | 4 | **PlayerService** | `alu-chess/playerservice/` | Scala (http4s) | 8083 | Spieler-/Matchmaking-Logik (optional) |
-| 5 | **Tournament** | `alu-chess/tournament/` | Scala (http4s) | 8084 | NowChess-Turnier-Bridge (NDJSON → SSE), eigene KI |
+| 5 | **Tournament** | `alu-chess/tournament/` | Scala (http4s) | über Controller 8081 | NowChess-Turnier-Bridge (NDJSON → SSE), eigene KI |
 | 6 | **Lichess** | `alu-chess/lichess/` | Scala (http4s) | 8085 | Lichess-Bot-Adapter (NDJSON → SSE), eigene KI |
 | 7 | **Stockfish-Engine** | `alu-chess/Dockerfile.stockfish` | Python + FastAPI | 8000 (intern) | UCI-Bridge für Model (nicht für Bots!) |
 | 8 | **PostgreSQL** | image `postgres:16` | — | 5432 | Persistenz (optional, `DB_TYPE=postgres`) |
@@ -34,7 +34,7 @@ Kurzreferenz: Was läuft wo, wie wird es gestartet (Docker **oder** rein lokal).
                  │        │        │              │
                  ▼        ▼        ▼              ▼
             Controller   Model   Tournament     Lichess
-             :8081      :8082     :8084          :8085
+             :8081      :8082  Controller        :8085
                 │         │         │              │
                 │         │         ▼              ▼
          PlayerService    │     NowChess-Server   lichess.org
@@ -55,13 +55,21 @@ Kurzreferenz: Was läuft wo, wie wird es gestartet (Docker **oder** rein lokal).
 
 **Tournament/Lichess:** halten je einen NDJSON-Stream zum externen Server offen, parsen Events, antworten mit Zügen (über die eigene KI), fanen Events als SSE an die UI aus.
 
-## Variante A — Docker (vollständig, einfach)
+## Variante A — Docker
 
-Voraussetzung: `.env` im `alu-chess/`-Verzeichnis mit `FRONTEND_CONTEXT=../alu-chess-web` und ggf. `DB_TYPE=memory`.
+Ohne `.env` startet der Backend-Stack mit `DB_TYPE=memory`. Das Frontend ist optional, weil es ein separates Repo mit eigenem `Dockerfile.frontend` braucht.
 
 ```powershell
 cd alu-chess
 docker compose up -d --build
+# Controller/API: http://localhost:8081
+```
+
+Mit Frontend, falls `alu-chess-web` als Nachbarordner existiert:
+
+```powershell
+cd alu-chess
+docker compose --profile frontend up -d --build
 # UI: http://localhost:3000
 ```
 
@@ -134,16 +142,15 @@ cd alu-chess
 $env:PORT = "8081"
 $env:PLAYER_SERVICE_URL = "http://localhost:8083"
 $env:DB_TYPE = "memory"
+$env:TOURNAMENT_SERVER_URL = "https://tournament.maichess.berger-software.com"
+$env:TOURNAMENT_BOT_NAME = "alu-chess-bot"
+$env:TOURNAMENT_DIRECTOR_NAME = "alu-chess-director"
 sbt "controller/run"
 ```
 
 ```powershell
-# Terminal 4 — Tournament (optional)
-cd alu-chess
-$env:PORT = "8084"
-$env:TOURNAMENT_BASE_URL = "https://st.nowchess.janis-eccarius.de"
-$env:TOURNAMENT_BOT_TOKEN = "..."
-sbt "tournament/run"
+# Tournament läuft nicht mehr als eigener Server.
+# Die Routen /api/tournament/... werden vom Controller bereitgestellt.
 ```
 
 ```powershell
@@ -173,7 +180,7 @@ Die [vite.config.ts](../../alu-chess-web/vite.config.ts) proxied automatisch:
 |---|---|
 | `/api/controller`, `/api/player`, `/api/perf` | `localhost:8081` |
 | `/api/model` | `localhost:8082` |
-| `/api/tournament` | `localhost:8084` |
+| `/api/tournament` | `localhost:8081` |
 | `/api/lichess` | `localhost:8085` |
 
 ### 4. Was kann man weglassen?
@@ -182,7 +189,7 @@ Die [vite.config.ts](../../alu-chess-web/vite.config.ts) proxied automatisch:
 |---|---|
 | Nur lokal Schach spielen (kein Engine-Gegner) | Frontend + Controller + Model + PlayerService |
 | + gegen Stockfish spielen | + Stockfish-Container |
-| + Turnier (NowChess) | + Tournament |
+| + Turnier (NowChess) | Controller mit `TOURNAMENT_SERVER_URL` |
 | + Lichess-Bot | + Lichess |
 
 Du musst **nicht alles** gleichzeitig starten.

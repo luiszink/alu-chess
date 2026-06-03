@@ -65,7 +65,7 @@ services:
       retries: 10
 
   # ── Controller Service ─────────────────────────────────────────
-  # DB_TYPE wird aus .env gelesen (postgres | mongo | memory)
+  # DB_TYPE defaults to memory so the backend can start without a .env file.
   controller:
     build:
       context: .
@@ -75,14 +75,20 @@ services:
     environment:
       PORT:               "8081"
       PLAYER_SERVICE_URL: http://playerservice:8083
-      DB_TYPE:            ${DB_TYPE}
+      DB_TYPE:            ${DB_TYPE:-memory}
       # PostgreSQL
-      DB_URL:      ${DB_URL}
-      DB_USER:     ${DB_USER}
-      DB_PASSWORD: ${DB_PASSWORD}
+      DB_URL:      ${DB_URL:-jdbc:postgresql://postgres:5432/chess}
+      DB_USER:     ${DB_USER:-chess}
+      DB_PASSWORD: ${DB_PASSWORD:-chess}
       # MongoDB
-      MONGO_URI:   ${MONGO_URI}
-      MONGO_DB:    ${MONGO_DB}
+      MONGO_URI:   ${MONGO_URI:-mongodb://mongo:27017}
+      MONGO_DB:    ${MONGO_DB:-chess}
+      # Tournament control is mounted in the controller; no separate tournament service.
+      TOURNAMENT_SERVER_URL:   ${TOURNAMENT_SERVER_URL:-https://tournament.maichess.berger-software.com}
+      TOURNAMENT_BOT_NAME:     ${TOURNAMENT_BOT_NAME:-alu-chess-bot}
+      TOURNAMENT_DIRECTOR_NAME: ${TOURNAMENT_DIRECTOR_NAME:-alu-chess-director}
+      AI_TIME_LIMIT_MS:        ${AI_TIME_LIMIT_MS:-2000}
+      AI_MAX_DEPTH:            ${AI_MAX_DEPTH:-4}
     depends_on:
       model:
         condition: service_healthy
@@ -189,7 +195,7 @@ services:
   # FRONTEND_CONTEXT wird aus .env gelesen (Pfad zum alu-chess-web Repo)
   frontend:
     build:
-      context: ${FRONTEND_CONTEXT}
+      context: ${FRONTEND_CONTEXT:-../alu-chess-web}
       dockerfile: Dockerfile.frontend
     ports:
       - "3000:80"
@@ -202,6 +208,7 @@ services:
       interval: 10s
       timeout: 5s
       retries: 10
+    profiles: ["frontend", "all"]
 
 volumes:
   postgres_data:

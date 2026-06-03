@@ -1,13 +1,12 @@
 package chess.tournament.config
 
 final case class TournamentConfig(
-    port: Int,
     serverUrl: String,
     botName: String,
+    directorName: String,
     aiTimeLimitMs: Long,
     aiMaxDepth: Int,
-):
-  def stagingUrl: String = "https://tournament.staging.maichess.berger-software.com"
+)
 
 object TournamentConfig:
   def fromEnv(): TournamentConfig =
@@ -19,9 +18,9 @@ object TournamentConfig:
       env(key).flatMap(_.toLongOption).getOrElse(default)
 
     TournamentConfig(
-      port          = envInt("PORT", 8087),
       serverUrl     = env("TOURNAMENT_SERVER_URL").getOrElse("https://tournament.maichess.berger-software.com"),
       botName       = env("TOURNAMENT_BOT_NAME").getOrElse("alu-chess-bot"),
+      directorName  = env("TOURNAMENT_DIRECTOR_NAME").getOrElse("alu-chess-director"),
       aiTimeLimitMs = envLong("AI_TIME_LIMIT_MS", 2000L),
       aiMaxDepth    = envInt("AI_MAX_DEPTH", 4),
     )

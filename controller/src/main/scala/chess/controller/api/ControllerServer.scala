@@ -17,6 +17,10 @@ import chess.model.*
 import chess.model.dao.{SlickGameDao, MongoGameDao}
 import chess.controller.{Controller, ControllerStreamBridge, GameRegistry}
 import chess.streaming.ChessStreamApp
+import chess.tournament.api.TournamentRoutes
+import chess.tournament.client.TournamentApiClient
+import chess.tournament.config.TournamentConfig
+import chess.tournament.model.BotStatus
 import chess.util.Observer
 import org.apache.pekko.actor.typed.ActorSystem
 import org.apache.pekko.actor.typed.scaladsl.Behaviors
@@ -90,13 +94,32 @@ object ControllerServer extends IOApp:
 
           gameRegistry <- GameRegistry.make(repo)
           playerClient  = PlayerServiceClient(httpClient)
+          tournamentCfg = TournamentConfig.fromEnv()
+          tournamentBaseUri <- IO.fromEither(
+            Uri.fromString(tournamentCfg.serverUrl)
+              .left
+              .map(e => new IllegalArgumentException(s"Invalid TOURNAMENT_SERVER_URL: ${e.getMessage}"))
+          )
+          tournamentDirectorClient = TournamentApiClient(httpClient, tournamentBaseUri)
+          tournamentBotClient      = TournamentApiClient(httpClient, tournamentBaseUri)
+          tournamentStatusRef     <- Ref.of[IO, BotStatus](BotStatus.Idle)
+          tournamentLogQueue      <- Queue.circularBuffer[IO, String](500)
 
           legacyRoutes = ControllerRoutes(ctrl, sseQueues)
           multiRoutes  = MultiGameRoutes(gameRegistry, playerClient)
-          combined     = legacyRoutes <+> multiRoutes
+          tournamentRoutes = TournamentRoutes(
+            tournamentCfg,
+            tournamentDirectorClient,
+            tournamentBotClient,
+            tournamentStatusRef,
+            tournamentLogQueue,
+          )
+          combined     = legacyRoutes <+> multiRoutes <+> tournamentRoutes
           app          = CORS.policy.withAllowOriginAll(jsonAppWithNotFound(combined))
 
-          _ <- IO.println(s"Controller-Service starting on port $port (DB_TYPE=${sys.env.getOrElse("DB_TYPE", "memory")}) ...")
+          _ <- IO.println(
+            s"Controller-Service starting on port $port (DB_TYPE=${sys.env.getOrElse("DB_TYPE", "memory")}, tournament=${tournamentCfg.serverUrl}) ..."
+          )
           _ <- EmberServerBuilder
             .default[IO]
             .withHost(host"0.0.0.0")

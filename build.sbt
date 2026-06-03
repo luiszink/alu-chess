@@ -69,7 +69,7 @@ lazy val model = project
 // Depends on Model for domain types.
 lazy val controller = project
   .in(file("controller"))
-  .dependsOn(model, streaming)
+  .dependsOn(model, streaming, tournament)
   .settings(
     commonSettings,
     assemblySettings,
@@ -160,10 +160,10 @@ lazy val lichess = project
   )
 
 // ── Tournament module ─────────────────────────────────────────
-// Microservice that connects to NowChess Tournament API:
+// Controller-mounted module that connects to NowChess Tournament API:
 //   - Registers bot, joins/creates tournaments
 //   - Streams tournament events and plays games using chess.model.ai.ChessAI
-//   - Exposes a REST + SSE facade + simple HTML control UI
+//   - Exposes routes through ControllerServer; it must not start its own server
 lazy val tournament = project
   .in(file("tournament"))
   .dependsOn(model)
@@ -171,7 +171,6 @@ lazy val tournament = project
     commonSettings,
     assemblySettings,
     name := "alu-chess-tournament",
-    assembly / mainClass := Some("chess.tournament.api.TournamentServer"),
     libraryDependencies ++= Seq(
       "io.circe" %% "circe-core"    % circeVersion,
       "io.circe" %% "circe-generic" % circeVersion,
