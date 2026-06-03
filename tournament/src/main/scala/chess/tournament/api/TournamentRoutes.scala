@@ -44,9 +44,10 @@ object TournamentRoutes:
       logQueue: Queue[IO, String],
   ): HttpRoutes[IO] =
 
-    def ensureDirector: IO[Unit] =
-      if directorClient.hasToken then IO.unit
-      else directorClient.register(cfg.directorName, isBot = false).void
+    def ensureDirector: IO[BotIdentity] =
+      directorClient.identity match
+        case Some(identity) => IO.pure(identity)
+        case None           => directorClient.register(cfg.directorName, isBot = false)
 
     def ensureBot: IO[Unit] =
       if botClient.hasToken then IO.unit
@@ -120,15 +121,19 @@ object TournamentRoutes:
       }
 
     def listForUi: IO[Json] =
-      directorClient.listTournaments.map { resp =>
+      ensureDirector *> directorClient.listTournaments.map { resp =>
+        val directorId = directorClient.identity.map(_.id)
         val toArr = (ts: List[TournamentInfo]) => Json.arr(ts.map { t =>
+          val canStart = t.status.contains("created") && directorId.exists(id => t.createdBy.contains(id))
           Json.obj(
-            "id"      -> Json.fromString(t.id),
-            "name"    -> Json.fromString(t.fullName),
-            "status"  -> Json.fromString(t.status.getOrElse("unknown")),
-            "players" -> Json.fromInt(t.nbPlayers.getOrElse(0)),
-            "rounds"  -> Json.fromInt(t.nbRounds.getOrElse(0)),
-            "format"  -> Json.fromString(t.format.getOrElse("swiss")),
+            "id"        -> Json.fromString(t.id),
+            "name"      -> Json.fromString(t.fullName),
+            "status"    -> Json.fromString(t.status.getOrElse("unknown")),
+            "players"   -> Json.fromInt(t.nbPlayers.getOrElse(0)),
+            "rounds"    -> Json.fromInt(t.nbRounds.getOrElse(0)),
+            "format"    -> Json.fromString(t.format.getOrElse("swiss")),
+            "createdBy" -> t.createdBy.map(Json.fromString).getOrElse(Json.Null),
+            "canStart"  -> Json.fromBoolean(canStart),
           )
         }*)
         Json.obj(

@@ -28,6 +28,7 @@ final case class TournamentInfo(
     nbRounds: Option[Int],
     format: Option[String],
     status: Option[String],
+    createdBy: Option[String],
 )
 object TournamentInfo:
   given Decoder[TournamentInfo] = deriveDecoder
