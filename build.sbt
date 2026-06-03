@@ -9,6 +9,7 @@ val circeVersion  = "0.14.10"
 val slickVersion      = "3.5.2"
 val mongo4catsVersion = "0.7.17"
 val pekkoVersion = "1.6.0"
+val pekkoKafkaVersion = "1.1.0"
 
 val assemblySettings = Seq(
   assembly / assemblyMergeStrategy := {
@@ -83,6 +84,8 @@ lazy val controller = project
       "org.http4s" %% "http4s-ember-client" % http4sVersion,
       "org.http4s" %% "http4s-circe"        % http4sVersion,
       "org.http4s" %% "http4s-dsl"          % http4sVersion,
+      // Kafka transport for controller -> streaming bridge
+      "org.apache.pekko" %% "pekko-connectors-kafka" % pekkoKafkaVersion,
     ),
     coverageExcludedPackages := "chess\\.aview\\.gui\\..*;chess\\.Chess\\$package",
     coverageExcludedFiles    := ".*Chess\\.scala",
@@ -128,8 +131,6 @@ lazy val streaming = project
     libraryDependencies ++= Seq(
       "org.apache.pekko" %% "pekko-stream"      % pekkoVersion,
       "org.apache.pekko" %% "pekko-actor-typed" % pekkoVersion,
-      // Nächste Woche Kafka:
-      // "org.apache.pekko" %% "pekko-connectors-kafka" % "1.1.0",
     ),
   )
 
