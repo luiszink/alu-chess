@@ -32,12 +32,10 @@ info:
   version: 2.0.0
 
 servers:
-  - url: https://st.nowchess.janis-eccarius.de
+  - url: https://tournament.maichess.berger-software.com"
     description: Staging
-  - url: https://nowchess.janis-eccarius.de
+  - url: https://tournament.maichess.berger-software.com"
     description: Production
-  - url: http://localhost:8086
-    description: Local
 
 security:
   - bearerAuth: []
