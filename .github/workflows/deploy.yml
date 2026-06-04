@@ -1,7 +1,9 @@
 name: Deploy
 
 on:
-  push:
+  workflow_run:
+    workflows: ["CI"]
+    types: [completed]
     branches: ["main"]
   workflow_dispatch: {}
 
@@ -16,17 +18,21 @@ concurrency:
 env:
   REGISTRY: ghcr.io
   IMAGE_PREFIX: ghcr.io/luiszink/alu-chess
-  IMAGE_TAG: sha-${{ github.sha }}
+  DEPLOY_SHA: ${{ github.event.workflow_run.head_sha || github.sha }}
+  IMAGE_TAG: sha-${{ github.event.workflow_run.head_sha || github.sha }}
   VALUES_FILE: deploy/helm/alu-chess/values-prod.yaml
 
 jobs:
   build-and-push:
     name: Build and push backend images
     runs-on: ubuntu-latest
+    if: github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success'
 
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+        with:
+          ref: ${{ env.DEPLOY_SHA }}
 
       - name: Login to GitHub Container Registry
         uses: docker/login-action@v3
@@ -99,7 +105,9 @@ jobs:
           cache-to: type=gha,scope=lichess,mode=max
 
       - name: Refresh GitOps branch
-        run: git pull --rebase origin main
+        run: |
+          git fetch origin main
+          git checkout -B main origin/main
 
       - name: Update backend image tags for Argo CD
         run: |
