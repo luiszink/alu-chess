@@ -30,7 +30,6 @@ services:
       interval: 5s
       timeout: 5s
       retries: 10
-    profiles: ["mongo", "all"]
 
   # ── Stockfish Engine (Python/FastAPI) ──────────────────────────
   stockfish:
@@ -211,7 +210,6 @@ services:
       interval: 10s
       timeout: 5s
       retries: 10
-    profiles: ["frontend", "all"]
 
 volumes:
   postgres_data:
