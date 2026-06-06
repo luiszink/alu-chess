@@ -1,0 +1,240 @@
+namespace:
+  create: true
+  name: alu-chess
+
+imagePullSecrets: []
+
+secretName: alu-chess-secrets
+
+mongo:
+  enabled: true
+  image:
+    repository: mongo
+    tag: 7-jammy
+    pullPolicy: IfNotPresent
+  service:
+    port: 27017
+  storage:
+    size: 10Gi
+  resources:
+    requests:
+      cpu: 250m
+      memory: 512Mi
+    limits:
+      cpu: "1"
+      memory: 1Gi
+
+services:
+  stockfish:
+    enabled: true
+    image:
+      repository: ghcr.io/luiszink/alu-chess/stockfish
+      tag: latest
+      pullPolicy: IfNotPresent
+    service:
+      type: ClusterIP
+      port: 8000
+    containerPort: 8000
+    readinessProbe:
+      path: /health
+      initialDelaySeconds: 10
+      periodSeconds: 10
+    livenessProbe:
+      path: /health
+      initialDelaySeconds: 30
+      periodSeconds: 20
+    resources:
+      requests:
+        cpu: 250m
+        memory: 256Mi
+      limits:
+        cpu: "1"
+        memory: 512Mi
+
+  model:
+    enabled: true
+    image:
+      repository: ghcr.io/luiszink/alu-chess/model
+      tag: latest
+      pullPolicy: IfNotPresent
+    service:
+      type: ClusterIP
+      port: 8082
+    containerPort: 8082
+    env:
+      - name: PORT
+        value: "8082"
+      - name: ENGINE_BASE_URL
+        value: "http://stockfish:8000"
+      - name: JAVA_TOOL_OPTIONS
+        value: "-XX:MaxRAMPercentage=75.0"
+    readinessProbe:
+      path: /health
+      initialDelaySeconds: 10
+      periodSeconds: 10
+    livenessProbe:
+      path: /health
+      initialDelaySeconds: 30
+      periodSeconds: 20
+    resources:
+      requests:
+        cpu: 250m
+        memory: 512Mi
+      limits:
+        cpu: "1"
+        memory: 1Gi
+
+  playerservice:
+    enabled: true
+    image:
+      repository: ghcr.io/luiszink/alu-chess/playerservice
+      tag: latest
+      pullPolicy: IfNotPresent
+    service:
+      type: ClusterIP
+      port: 8083
+    containerPort: 8083
+    env:
+      - name: PORT
+        value: "8083"
+      - name: JAVA_TOOL_OPTIONS
+        value: "-XX:MaxRAMPercentage=75.0"
+    readinessProbe:
+      path: /health
+      initialDelaySeconds: 10
+      periodSeconds: 10
+    livenessProbe:
+      path: /health
+      initialDelaySeconds: 30
+      periodSeconds: 20
+    resources:
+      requests:
+        cpu: 100m
+        memory: 256Mi
+      limits:
+        cpu: 500m
+        memory: 512Mi
+
+  controller:
+    enabled: true
+    image:
+      repository: ghcr.io/luiszink/alu-chess/controller
+      tag: latest
+      pullPolicy: IfNotPresent
+    service:
+      type: ClusterIP
+      port: 8081
+    containerPort: 8081
+    env:
+      - name: PORT
+        value: "8081"
+      - name: DB_TYPE
+        value: "mongo"
+      - name: MONGO_DB
+        value: "chess"
+      - name: MONGO_URI
+        valueFrom:
+          secretKeyRef:
+            name: alu-chess-secrets
+            key: MONGO_URI
+      - name: PLAYER_SERVICE_URL
+        value: "http://playerservice:8083"
+      - name: JAVA_TOOL_OPTIONS
+        value: "-XX:MaxRAMPercentage=75.0"
+    readinessProbe:
+      path: /health
+      initialDelaySeconds: 10
+      periodSeconds: 10
+    livenessProbe:
+      path: /health
+      initialDelaySeconds: 30
+      periodSeconds: 20
+    resources:
+      requests:
+        cpu: 250m
+        memory: 512Mi
+      limits:
+        cpu: "1"
+        memory: 1Gi
+
+  lichess:
+    enabled: true
+    image:
+      repository: ghcr.io/luiszink/alu-chess/lichess
+      tag: latest
+      pullPolicy: IfNotPresent
+    service:
+      type: ClusterIP
+      port: 8085
+    containerPort: 8085
+    env:
+      - name: PORT
+        value: "8085"
+      - name: LICHESS_BASE_URL
+        value: "https://lichess.org"
+      - name: LICHESS_BOT_TOKEN
+        valueFrom:
+          secretKeyRef:
+            name: alu-chess-secrets
+            key: LICHESS_BOT_TOKEN
+            optional: true
+      - name: LICHESS_AUTO_ACCEPT
+        value: "true"
+      - name: LICHESS_ACCEPT_RATED
+        value: "false"
+      - name: LICHESS_ACCEPT_VARIANTS
+        value: "standard"
+      - name: LICHESS_MIN_INITIAL_SECONDS
+        value: "180"
+      - name: LICHESS_MAX_INITIAL_SECONDS
+        value: "900"
+      - name: LICHESS_MAX_GAMES_CONCURRENT
+        value: "2"
+      - name: AI_TIME_LIMIT_MS
+        value: "2000"
+      - name: AI_MAX_DEPTH
+        value: "4"
+      - name: JAVA_TOOL_OPTIONS
+        value: "-XX:MaxRAMPercentage=75.0"
+    readinessProbe:
+      path: /health
+      initialDelaySeconds: 10
+      periodSeconds: 10
+    livenessProbe:
+      path: /health
+      initialDelaySeconds: 30
+      periodSeconds: 20
+    resources:
+      requests:
+        cpu: 250m
+        memory: 512Mi
+      limits:
+        cpu: "1"
+        memory: 1Gi
+
+  frontend:
+    enabled: true
+    image:
+      repository: ghcr.io/luiszink/alu-chess-web
+      tag: latest
+      pullPolicy: IfNotPresent
+    service:
+      type: NodePort
+      port: 80
+      nodePort: 30080
+    containerPort: 80
+    readinessProbe:
+      path: /
+      initialDelaySeconds: 5
+      periodSeconds: 10
+    livenessProbe:
+      path: /
+      initialDelaySeconds: 20
+      periodSeconds: 20
+    resources:
+      requests:
+        cpu: 50m
+        memory: 64Mi
+      limits:
+        cpu: 250m
+        memory: 128Mi

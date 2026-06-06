@@ -1,0 +1,21 @@
+# CI-Override: Nutzt vorher mit sbt gebaute Fat-JARs (kein sbt im Container)
+# und exponiert den Controller-Port auf dem GitHub Actions Runner.
+# Frontend wird absichtlich NICHT gestartet.
+
+services:
+  controller:
+    build:
+      context: .
+      dockerfile: Dockerfile.controller.local
+    ports:
+      - "8081:8081"
+
+  model:
+    build:
+      context: .
+      dockerfile: Dockerfile.model.local
+
+  playerservice:
+    build:
+      context: .
+      dockerfile: Dockerfile.playerservice.local

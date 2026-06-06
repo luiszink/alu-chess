@@ -1,0 +1,69 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: controller
+  namespace: alu-chess
+spec:
+  selector:
+    app: controller
+  ports:
+    - name: http
+      port: 8081
+      targetPort: 8081
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: controller
+  namespace: alu-chess
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: controller
+  template:
+    metadata:
+      labels:
+        app: controller
+    spec:
+      containers:
+        - name: controller
+          image: localhost/alu-chess-controller:0.1.0
+          imagePullPolicy: Never
+          ports:
+            - containerPort: 8081
+          env:
+            - name: PORT
+              value: "8081"
+            - name: DB_TYPE
+              value: "mongo"
+            - name: MONGO_DB
+              value: "chess"
+            - name: MONGO_URI
+              valueFrom:
+                secretKeyRef:
+                  name: alu-chess-secrets
+                  key: MONGO_URI
+            - name: PLAYER_SERVICE_URL
+              value: "http://playerservice:8083"
+            - name: JAVA_TOOL_OPTIONS
+              value: "-XX:MaxRAMPercentage=75.0"
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: 8081
+            initialDelaySeconds: 10
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: 8081
+            initialDelaySeconds: 30
+            periodSeconds: 20
+          resources:
+            requests:
+              cpu: 250m
+              memory: 512Mi
+            limits:
+              cpu: "1"
+              memory: 1Gi

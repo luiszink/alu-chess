@@ -1,0 +1,23 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+resources:
+  - ../../base
+images:
+  - name: localhost/alu-chess-frontend
+    newName: localhost/alu-chess-frontend
+    newTag: 0.1.0
+  - name: localhost/alu-chess-controller
+    newName: localhost/alu-chess-controller
+    newTag: 0.1.0
+  - name: localhost/alu-chess-model
+    newName: localhost/alu-chess-model
+    newTag: 0.1.0
+  - name: localhost/alu-chess-playerservice
+    newName: localhost/alu-chess-playerservice
+    newTag: 0.1.0
+  - name: localhost/alu-chess-stockfish
+    newName: localhost/alu-chess-stockfish
+    newTag: 0.1.0
+  - name: localhost/alu-chess-lichess
+    newName: localhost/alu-chess-lichess
+    newTag: 0.1.0

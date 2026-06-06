@@ -1,0 +1,65 @@
+{{- range $name, $service := .Values.services }}
+{{- if $service.enabled }}
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ $name }}
+  namespace: {{ include "alu-chess.namespace" $ }}
+spec:
+  type: {{ $service.service.type }}
+  selector:
+    app: {{ $name }}
+  ports:
+    - name: http
+      port: {{ $service.service.port }}
+      targetPort: {{ $service.containerPort }}
+{{- with $service.service.nodePort }}
+      nodePort: {{ . }}
+{{- end }}
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ $name }}
+  namespace: {{ include "alu-chess.namespace" $ }}
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: {{ $name }}
+  template:
+    metadata:
+      labels:
+        app: {{ $name }}
+    spec:
+{{- with $.Values.imagePullSecrets }}
+      imagePullSecrets:
+{{ toYaml . | indent 8 }}
+{{- end }}
+      containers:
+        - name: {{ $name }}
+          image: "{{ $service.image.repository }}:{{ $service.image.tag }}"
+          imagePullPolicy: {{ $service.image.pullPolicy }}
+          ports:
+            - containerPort: {{ $service.containerPort }}
+{{- with $service.env }}
+          env:
+{{ toYaml . | indent 12 }}
+{{- end }}
+          readinessProbe:
+            httpGet:
+              path: {{ $service.readinessProbe.path }}
+              port: {{ $service.containerPort }}
+            initialDelaySeconds: {{ $service.readinessProbe.initialDelaySeconds }}
+            periodSeconds: {{ $service.readinessProbe.periodSeconds }}
+          livenessProbe:
+            httpGet:
+              path: {{ $service.livenessProbe.path }}
+              port: {{ $service.containerPort }}
+            initialDelaySeconds: {{ $service.livenessProbe.initialDelaySeconds }}
+            periodSeconds: {{ $service.livenessProbe.periodSeconds }}
+          resources:
+{{ toYaml $service.resources | indent 12 }}
+---
+{{- end }}
+{{- end }}

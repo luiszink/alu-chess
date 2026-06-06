@@ -1,0 +1,58 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: playerservice
+  namespace: alu-chess
+spec:
+  selector:
+    app: playerservice
+  ports:
+    - name: http
+      port: 8083
+      targetPort: 8083
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: playerservice
+  namespace: alu-chess
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: playerservice
+  template:
+    metadata:
+      labels:
+        app: playerservice
+    spec:
+      containers:
+        - name: playerservice
+          image: localhost/alu-chess-playerservice:0.1.0
+          imagePullPolicy: Never
+          ports:
+            - containerPort: 8083
+          env:
+            - name: PORT
+              value: "8083"
+            - name: JAVA_TOOL_OPTIONS
+              value: "-XX:MaxRAMPercentage=75.0"
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: 8083
+            initialDelaySeconds: 10
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: 8083
+            initialDelaySeconds: 30
+            periodSeconds: 20
+          resources:
+            requests:
+              cpu: 100m
+              memory: 256Mi
+            limits:
+              cpu: 500m
+              memory: 512Mi

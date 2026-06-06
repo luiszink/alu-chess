@@ -1,0 +1,23 @@
+imagePullSecrets:
+  - name: ghcr-secret
+
+services:
+  stockfish:
+    image:
+      tag: latest
+  model:
+    image:
+      tag: latest
+  playerservice:
+    image:
+      tag: latest
+  controller:
+    image:
+      tag: latest
+  lichess:
+    image:
+      tag: latest
+  frontend:
+    image:
+      repository: ghcr.io/luiszink/alu-chess-web
+      tag: latest
