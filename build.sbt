@@ -134,6 +134,26 @@ lazy val streaming = project
     ),
   )
 
+// Kafka worker for asynchronous Human-vs-AI moves.
+lazy val aiworker = project
+  .in(file("aiworker"))
+  .dependsOn(model)
+  .settings(
+    commonSettings,
+    assemblySettings,
+    name := "alu-chess-aiworker",
+    assembly / mainClass := Some("chess.aiworker.KafkaAiWorker"),
+    libraryDependencies ++= Seq(
+      "io.circe" %% "circe-core"    % circeVersion,
+      "io.circe" %% "circe-generic" % circeVersion,
+      "io.circe" %% "circe-parser"  % circeVersion,
+      "org.apache.pekko" %% "pekko-stream"           % pekkoVersion,
+      "org.apache.pekko" %% "pekko-actor-typed"      % pekkoVersion,
+      "org.apache.pekko" %% "pekko-connectors-kafka" % pekkoKafkaVersion,
+    ),
+    coverageEnabled := false,
+  )
+
 // ── Lichess module ────────────────────────────────────────────
 // Microservice that connects to lichess.org Bot API:
 //   - Streams incoming events (challenges, game-start) via NDJSON
@@ -187,7 +207,7 @@ lazy val tournament = project
 // ── Root aggregate ────────────────────────────────────────────
 lazy val root = project
   .in(file("."))
-  .aggregate(model, controller, playerservice, streaming, lichess, tournament)
+  .aggregate(model, controller, playerservice, streaming, aiworker, lichess, tournament)
   .settings(
     name := "alu-chess",
     publish / skip := true,

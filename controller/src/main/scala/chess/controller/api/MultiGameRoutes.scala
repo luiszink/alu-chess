@@ -13,7 +13,7 @@ import io.circe.*
 import io.circe.syntax.*
 import chess.model.*
 import chess.model.ai.AIMode
-import chess.controller.{Controller, ControllerInterface, GameEntry, GameRegistry}
+import chess.controller.{AiMoveRequester, Controller, ControllerInterface, GameEntry, GameRegistry}
 import chess.util.Observer
 
 import cats.effect.unsafe.implicits.global
@@ -21,8 +21,9 @@ import cats.effect.unsafe.implicits.global
 object MultiGameRoutes:
 
   def apply(
-    registry:     GameRegistry,
-    playerClient: PlayerServiceClient,
+    registry:        GameRegistry,
+    playerClient:    PlayerServiceClient,
+    aiMoveRequester: AiMoveRequester = AiMoveRequester.noop,
   ): HttpRoutes[IO] =
 
     // ── JSON helpers (identical to ControllerRoutes) ────────────
@@ -81,6 +82,13 @@ object MultiGameRoutes:
         case None        => NotFound(Json.obj("error" -> Json.fromString(s"Game '$gameId' not found")))
         case Some(entry) => f(entry)
       }
+
+    def shouldRequestAiMove(ctrl: ControllerInterface): Boolean =
+      !ctrl.game.status.isTerminal &&
+        (ctrl.aiMode match
+          case AIMode.PlayingAs(color) => ctrl.game.currentPlayer == color
+          case AIMode.PlayingBoth      => true
+          case AIMode.Disabled         => false)
 
     // ── Routes ──────────────────────────────────────────────────
 
@@ -194,7 +202,11 @@ object MultiGameRoutes:
                     val finishIO =
                       if updated.status.isTerminal then playerClient.finishSession(gameId)
                       else IO.unit
-                    finishIO >> Ok(stateJson(entry.controller))
+                    val aiRequestIO =
+                      if shouldRequestAiMove(entry.controller) then
+                        aiMoveRequester.requestMove(gameId, entry.controller)
+                      else IO.unit
+                    finishIO >> aiRequestIO >> Ok(stateJson(entry.controller))
                   case Left(err) =>
                     val status = err match
                       case _: ChessError.GameAlreadyOver => Status.Conflict

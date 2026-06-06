@@ -15,7 +15,7 @@ import io.circe.*
 import io.circe.syntax.*
 import chess.model.*
 import chess.model.dao.{SlickGameDao, MongoGameDao}
-import chess.controller.{Controller, ControllerStreamBridge, GameRegistry}
+import chess.controller.{Controller, ControllerStreamBridge, GameRegistry, KafkaAiCoordinator}
 import chess.streaming.ChessStreamApp
 import chess.tournament.api.TournamentRoutes
 import chess.tournament.client.TournamentApiClient
@@ -95,6 +95,7 @@ object ControllerServer extends IOApp:
 
           gameRegistry <- GameRegistry.make(repo)
           playerClient  = PlayerServiceClient(httpClient)
+          aiCoordinator <- IO(KafkaAiCoordinator(gameRegistry, playerClient.finishSession)(using pekkoSystem))
           tournamentCfg = TournamentConfig.fromEnv()
           tournamentBaseUri <- IO.fromEither(
             Uri.fromString(tournamentCfg.serverUrl)
@@ -107,7 +108,7 @@ object ControllerServer extends IOApp:
           tournamentLogQueue      <- Queue.circularBuffer[IO, String](500)
 
           legacyRoutes = ControllerRoutes(ctrl, sseQueues)
-          multiRoutes  = MultiGameRoutes(gameRegistry, playerClient)
+          multiRoutes  = MultiGameRoutes(gameRegistry, playerClient, aiCoordinator)
           tournamentRoutes = TournamentRoutes(
             tournamentCfg,
             tournamentDirectorClient,

@@ -68,7 +68,7 @@ Bei Fehlern kann die Antwort statt eines Zuges ein Fehlerfeld enthalten:
 }
 ```
 
-## Geplante Aenderungen
+## Umgesetzte Aenderungen
 
 - Neues sbt-Modul `aiworker`, abhaengig von `model`.
 - Neuer Service-Einstiegspunkt `chess.aiworker.KafkaAiWorker`.

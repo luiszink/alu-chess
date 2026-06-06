@@ -90,9 +90,13 @@ services:
       AI_MAX_DEPTH:            ${AI_MAX_DEPTH:-4}
       KAFKA_BOOTSTRAP_SERVERS: ${KAFKA_BOOTSTRAP_SERVERS:-kafka:9092}
       KAFKA_TOPIC_MOVES:       ${KAFKA_TOPIC_MOVES:-chess-moves}
+      KAFKA_TOPIC_AI_REQUESTS:  ${KAFKA_TOPIC_AI_REQUESTS:-chess-ai-requests}
+      KAFKA_TOPIC_AI_RESPONSES: ${KAFKA_TOPIC_AI_RESPONSES:-chess-ai-responses}
     depends_on:
       kafka:
         condition: service_healthy
+      aiworker:
+        condition: service_started
       model:
         condition: service_healthy
       playerservice:
@@ -124,6 +128,22 @@ services:
       interval: 10s
       timeout: 5s
       retries: 10
+
+  # ── Kafka AI Worker ───────────────────────────────────────────
+  aiworker:
+    build:
+      context: .
+      dockerfile: Dockerfile.aiworker
+    environment:
+      KAFKA_BOOTSTRAP_SERVERS: ${KAFKA_BOOTSTRAP_SERVERS:-kafka:9092}
+      KAFKA_TOPIC_AI_REQUESTS:  ${KAFKA_TOPIC_AI_REQUESTS:-chess-ai-requests}
+      KAFKA_TOPIC_AI_RESPONSES: ${KAFKA_TOPIC_AI_RESPONSES:-chess-ai-responses}
+      KAFKA_AI_WORKER_GROUP_ID: ${KAFKA_AI_WORKER_GROUP_ID:-alu-chess-ai-workers}
+      AI_TIME_LIMIT_MS:         ${AI_TIME_LIMIT_MS:-2000}
+      AI_MAX_DEPTH:             ${AI_MAX_DEPTH:-4}
+    depends_on:
+      kafka:
+        condition: service_healthy
 
   # ── Kafka ───────────────────────────────────────────────────────
   kafka:
