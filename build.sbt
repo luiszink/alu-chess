@@ -146,7 +146,7 @@ lazy val aiworker = project
     commonSettings,
     assemblySettings,
     name := "alu-chess-aiworker",
-    assembly / mainClass := Some("chess.aiworker.KafkaAiWorker"),
+    assembly / mainClass := Some("chess.aiworker.KafkaWorkerApp"),
     libraryDependencies ++= Seq(
       "io.circe" %% "circe-core"    % circeVersion,
       "io.circe" %% "circe-generic" % circeVersion,
@@ -154,6 +154,11 @@ lazy val aiworker = project
       "org.apache.pekko" %% "pekko-stream"           % pekkoVersion,
       "org.apache.pekko" %% "pekko-actor-typed"      % pekkoVersion,
       "org.apache.pekko" %% "pekko-connectors-kafka" % pekkoKafkaVersion,
+      "com.typesafe.slick" %% "slick"          % slickVersion,
+      "com.typesafe.slick" %% "slick-hikaricp" % slickVersion,
+      "org.postgresql"      % "postgresql"      % "42.7.4",
+      "io.github.kirill5k" %% "mongo4cats-core"  % mongo4catsVersion,
+      "io.github.kirill5k" %% "mongo4cats-circe" % mongo4catsVersion,
     ),
     coverageEnabled := false,
   )

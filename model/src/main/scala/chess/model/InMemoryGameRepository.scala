@@ -1,10 +1,10 @@
 package chess.model
 
-class InMemoryGameRepository extends GameRepository:
-  private var records: Vector[GameRecord] = Vector.empty
+class InMemoryGameRepository(initialRecords: Vector[GameRecord] = Vector.empty) extends GameRepository:
+  private var records: Vector[GameRecord] = initialRecords
 
   override def save(record: GameRecord): Unit =
-    records = record +: records
+    records = record +: records.filterNot(_.id == record.id)
 
   override def findAll(): Vector[GameRecord] = records
 

@@ -85,7 +85,7 @@ services:
       retries: 10
 
   # ── Controller Service ─────────────────────────────────────────
-  # DB_TYPE defaults to memory so the backend can start without a .env file.
+  # DB_TYPE defaults to mongo so game persistence is active without a .env file.
   controller:
     build:
       context: .
@@ -95,7 +95,8 @@ services:
     environment:
       PORT:               "8081"
       PLAYER_SERVICE_URL: http://playerservice:8083
-      DB_TYPE:            ${DB_TYPE:-memory}
+      DB_TYPE:            ${DB_TYPE:-mongo}
+      PERSISTENCE_TRANSPORT: ${PERSISTENCE_TRANSPORT:-kafka}
       # PostgreSQL
       DB_URL:      ${DB_URL:-jdbc:postgresql://postgres:5432/chess}
       DB_USER:     ${DB_USER:-chess}
@@ -113,10 +114,11 @@ services:
       KAFKA_TOPIC_MOVES:       ${KAFKA_TOPIC_MOVES:-chess-moves}
       KAFKA_TOPIC_AI_REQUESTS:  ${KAFKA_TOPIC_AI_REQUESTS:-chess-ai-requests}
       KAFKA_TOPIC_AI_RESPONSES: ${KAFKA_TOPIC_AI_RESPONSES:-chess-ai-responses}
+      KAFKA_TOPIC_GAME_PERSISTENCE: ${KAFKA_TOPIC_GAME_PERSISTENCE:-game-persistence-requests}
     depends_on:
       kafka:
         condition: service_healthy
-      aiworker:
+      kafka-scala-worker:
         condition: service_started
       model:
         condition: service_healthy
@@ -128,7 +130,6 @@ services:
         required: false
       mongo:
         condition: service_healthy
-        required: false
     healthcheck:
       test: ["CMD-SHELL", "curl -sf http://localhost:8081/health || exit 1"]
       interval: 10s
@@ -150,8 +151,8 @@ services:
       timeout: 5s
       retries: 10
 
-  # ── Kafka AI Worker ───────────────────────────────────────────
-  aiworker:
+  # ── Kafka Worker: AI moves + game persistence ─────────────────
+  kafka-scala-worker:
     build:
       context: .
       dockerfile: Dockerfile.aiworker
@@ -160,11 +161,26 @@ services:
       KAFKA_TOPIC_AI_REQUESTS:  ${KAFKA_TOPIC_AI_REQUESTS:-chess-ai-requests}
       KAFKA_TOPIC_AI_RESPONSES: ${KAFKA_TOPIC_AI_RESPONSES:-chess-ai-responses}
       KAFKA_AI_WORKER_GROUP_ID: ${KAFKA_AI_WORKER_GROUP_ID:-alu-chess-ai-workers}
+      KAFKA_TOPIC_GAME_PERSISTENCE: ${KAFKA_TOPIC_GAME_PERSISTENCE:-game-persistence-requests}
+      KAFKA_PERSISTENCE_WORKER_GROUP_ID: ${KAFKA_PERSISTENCE_WORKER_GROUP_ID:-alu-chess-persistence-workers}
+      KAFKA_PERSISTENCE_CONSUMER_ENABLED: ${KAFKA_PERSISTENCE_CONSUMER_ENABLED:-true}
+      PERSISTENCE_TRANSPORT:    ${PERSISTENCE_TRANSPORT:-kafka}
+      DB_TYPE:                  ${DB_TYPE:-mongo}
+      DB_URL:                   ${DB_URL:-jdbc:postgresql://postgres:5432/chess}
+      DB_USER:                  ${DB_USER:-chess}
+      DB_PASSWORD:              ${DB_PASSWORD:-chess}
+      MONGO_URI:                ${MONGO_URI:-mongodb://mongo:27017}
+      MONGO_DB:                 ${MONGO_DB:-chess}
       AI_TIME_LIMIT_MS:         ${AI_TIME_LIMIT_MS:-2000}
       AI_MAX_DEPTH:             ${AI_MAX_DEPTH:-4}
     depends_on:
       kafka:
         condition: service_healthy
+      mongo:
+        condition: service_healthy
+      postgres:
+        condition: service_healthy
+        required: false
 
   # ── Kafka ───────────────────────────────────────────────────────
   kafka:

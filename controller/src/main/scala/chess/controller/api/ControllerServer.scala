@@ -14,8 +14,9 @@ import org.http4s.server.middleware.CORS
 import io.circe.*
 import io.circe.syntax.*
 import chess.model.*
-import chess.model.dao.{SlickGameDao, MongoGameDao}
+import chess.model.dao.{GameRecordMapper, MongoGameDao, SlickGameDao}
 import chess.controller.{Controller, ControllerStreamBridge, GameRegistry, KafkaAiCoordinator}
+import chess.controller.persistence.{KafkaGamePersistencePublisher, KafkaPublishingGameRepository}
 import chess.streaming.ChessStreamApp
 import chess.tournament.api.TournamentRoutes
 import chess.tournament.client.TournamentApiClient
@@ -50,8 +51,14 @@ object ControllerServer extends IOApp:
   )
 
   // ── Dependency Injection: DB via DB_TYPE Env-Variable ─────────
-  private def makeRepository: Resource[IO, GameRepository] =
-    sys.env.getOrElse("DB_TYPE", "memory") match
+  private def selectedDbType: String =
+    sys.env.getOrElse("DB_TYPE", "mongo").trim.toLowerCase
+
+  private def selectedPersistenceTransport: String =
+    sys.env.getOrElse("PERSISTENCE_TRANSPORT", "kafka").trim.toLowerCase
+
+  private def directRepository(dbType: String): Resource[IO, GameRepository] =
+    dbType match
       case "postgres" =>
         val url  = sys.env.getOrElse("DB_URL",      "jdbc:postgresql://localhost:5432/chess")
         val user = sys.env.getOrElse("DB_USER",     "chess")
@@ -63,6 +70,35 @@ object ControllerServer extends IOApp:
         MongoGameDao.resource(uri, dbName).map(PersistentGameRepository(_))
       case _ =>
         Resource.pure[IO, GameRepository](InMemoryGameRepository())
+
+  private def loadInitialRecords(dbType: String): IO[Vector[GameRecord]] =
+    dbType match
+      case "postgres" =>
+        val url  = sys.env.getOrElse("DB_URL",      "jdbc:postgresql://localhost:5432/chess")
+        val user = sys.env.getOrElse("DB_USER",     "chess")
+        val pass = sys.env.getOrElse("DB_PASSWORD", "chess")
+        SlickGameDao.resource(url, user, pass).use { dao =>
+          dao.findAll().map(_.flatMap(GameRecordMapper.fromRow))
+        }
+      case "mongo" =>
+        val uri    = sys.env.getOrElse("MONGO_URI", "mongodb://localhost:27017")
+        val dbName = sys.env.getOrElse("MONGO_DB",  "chess")
+        MongoGameDao.resource(uri, dbName).use { dao =>
+          dao.findAll().map(_.flatMap(GameRecordMapper.fromRow))
+        }
+      case _ =>
+        IO.pure(Vector.empty)
+
+  private def makeRepository: Resource[IO, GameRepository] =
+    val dbType = selectedDbType
+    selectedPersistenceTransport match
+      case "kafka" =>
+        for
+          initialRecords <- Resource.eval(loadInitialRecords(dbType))
+          publisher      <- KafkaGamePersistencePublisher.resourceFromEnv()
+        yield KafkaPublishingGameRepository(InMemoryGameRepository(initialRecords), publisher)
+      case _ =>
+        directRepository(dbType)
 
   override def run(args: List[String]): IO[ExitCode] =
     val port = sys.env.getOrElse("PORT", "8081").toInt
@@ -120,7 +156,7 @@ object ControllerServer extends IOApp:
           app          = CORS.policy.withAllowOriginAll(jsonAppWithNotFound(combined))
 
           _ <- IO.println(
-            s"Controller-Service starting on port $port (DB_TYPE=${sys.env.getOrElse("DB_TYPE", "memory")}, tournament=${tournamentCfg.serverUrl}) ..."
+            s"Controller-Service starting on port $port (DB_TYPE=$selectedDbType, PERSISTENCE_TRANSPORT=$selectedPersistenceTransport, tournament=${tournamentCfg.serverUrl}) ..."
           )
           _ <- EmberServerBuilder
             .default[IO]
