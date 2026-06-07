@@ -59,6 +59,10 @@ lazy val model = project
       // MongoDB via mongo4cats (Cats Effect wrapper)
       "io.github.kirill5k" %% "mongo4cats-core"  % mongo4catsVersion,
       "io.github.kirill5k" %% "mongo4cats-circe" % mongo4catsVersion,
+      // Kafka transport for Stockfish engine requests
+      "org.apache.pekko" %% "pekko-stream"           % pekkoVersion,
+      "org.apache.pekko" %% "pekko-actor-typed"      % pekkoVersion,
+      "org.apache.pekko" %% "pekko-connectors-kafka" % pekkoKafkaVersion,
     ),
     coverageMinimumStmtTotal   := 90,
     coverageMinimumBranchTotal := 90,
