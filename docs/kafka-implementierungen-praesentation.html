@@ -51,6 +51,12 @@
       display: flex;
       flex-direction: column;
       gap: 26px;
+      animation: rise 0.4s ease;
+    }
+
+    @keyframes rise {
+      from { opacity: 0; transform: translateY(10px); }
+      to   { opacity: 1; transform: translateY(0); }
     }
 
     .slide::before {
@@ -59,6 +65,19 @@
       inset: 0 0 auto 0;
       height: 7px;
       background: var(--accent, var(--green));
+    }
+
+    /* Fortschrittsbalken am unteren Folienrand */
+    .slide::after {
+      content: "";
+      position: absolute;
+      left: 0;
+      bottom: 0;
+      height: 4px;
+      width: var(--progress, 0%);
+      background: var(--accent, var(--green));
+      opacity: 0.55;
+      transition: width 0.4s ease;
     }
 
     .eyebrow {
@@ -128,6 +147,15 @@
       font-weight: 900;
       color: var(--green);
       text-align: right;
+    }
+
+    .big-number .label {
+      display: block;
+      font-size: 20px;
+      font-weight: 800;
+      letter-spacing: 0.04em;
+      text-transform: uppercase;
+      color: var(--muted);
     }
 
     .grid-3 {
@@ -237,19 +265,85 @@
     }
 
     .topic-pill {
+      position: relative;
       border: 1px solid color-mix(in srgb, var(--accent, var(--green)), white 55%);
+      border-left: 6px solid var(--accent, var(--green));
       border-radius: 8px;
       background: #fff;
-      padding: 11px 13px;
-      text-align: center;
+      padding: 10px 14px;
+      text-align: left;
       font-weight: 850;
       color: #25313c;
+    }
+
+    /* Request- und Response-Topic visuell voneinander trennen */
+    .topic-pill.response {
+      border-left-color: #9aa6b2;
+    }
+
+    .topic-pill .topic-name {
+      display: block;
+      font-family: "Cascadia Mono", "Fira Code", Consolas, monospace;
+      font-size: 16px;
     }
 
     .topic-pill .small {
       display: block;
       color: var(--muted);
       margin-top: 3px;
+      font-weight: 700;
+    }
+
+    .topic-dir {
+      display: inline-block;
+      font-size: 11px;
+      font-weight: 900;
+      letter-spacing: 0.05em;
+      text-transform: uppercase;
+      color: color-mix(in srgb, var(--accent, var(--green)), black 18%);
+      margin-bottom: 6px;
+    }
+
+    .topic-pill.response .topic-dir {
+      color: #5a6772;
+    }
+
+    .legend {
+      display: flex;
+      gap: 18px;
+      flex-wrap: wrap;
+      align-items: center;
+      font-size: 14px;
+      font-weight: 700;
+      color: var(--muted);
+    }
+
+    .legend .role { cursor: default; }
+
+    .roles {
+      display: flex;
+      gap: 6px;
+      justify-content: center;
+      margin-top: 10px;
+    }
+
+    .role {
+      font-size: 12px;
+      font-weight: 800;
+      letter-spacing: 0.02em;
+      border-radius: 999px;
+      padding: 3px 10px;
+    }
+
+    .role.producer {
+      background: color-mix(in srgb, var(--accent, var(--green)), white 80%);
+      color: color-mix(in srgb, var(--accent, var(--green)), black 22%);
+    }
+
+    .role.consumer {
+      background: #eef1f4;
+      color: #44525e;
+      border: 1px solid #d8dee4;
     }
 
     .architecture {
@@ -437,57 +531,79 @@
       <p class="eyebrow">alu-chess Architektur</p>
       <div class="title-grid">
         <div class="title-card">
-          <h1>Kafka Implementierungen im Chess-System</h1>
-          <p>Aktive Kafka-Nutzung für KI-Zuege, Stockfish-Engine und Persistenz.</p>
+          <h1>Kafka-Implementierungen im Chess-System</h1>
         </div>
+        <div class="big-number">3<span class="label">Ansätze</span></div>
       </div>
       <div class="footer">
-        <span>HTML-Praesentation</span>
+        <span>HTML-Präsentation</span>
         <span>Kafka als aktive Integrationsschicht</span>
       </div>
     </section>
 
     <section class="slide" style="--accent: var(--green)">
       <p class="eyebrow">Gesamtarchitektur</p>
-      <h2>Ein Broker, drei Kafka-Fluesse</h2>
+      <h2>Ein Broker, drei Kafka-Flüsse</h2>
       <div class="architecture">
         <div class="stack">
-          <div class="node">Controller</div>
-          <div class="node">Model-Service</div>
+          <div class="node">Controller
+            <div class="roles"><span class="role producer">P</span><span class="role consumer">C</span></div>
+          </div>
+          <div class="node">Model-Service
+            <div class="roles"><span class="role producer">P</span><span class="role consumer">C</span></div>
+          </div>
         </div>
-        <div class="broker">Kafka<br><span class="small">Topics + Consumer Groups</span></div>
+        <div class="broker">Kafka<br><span class="small">5 Topics &middot; Consumer Groups</span></div>
         <div class="stack">
-          <div class="node">kafka-scala-worker</div>
-          <div class="node">stockfishworker</div>
-          <div class="node">MongoDB</div>
+          <div class="node">kafka-scala-worker
+            <div class="roles"><span class="role consumer">C</span><span class="role producer">P</span></div>
+          </div>
+          <div class="node">stockfishworker
+            <div class="roles"><span class="role consumer">C</span><span class="role producer">P</span></div>
+          </div>
+          <div class="node">MongoDB<br><span class="small">Sink</span></div>
         </div>
       </div>
-      <div class="tag-row">
+      <div class="legend">
+        <span><span class="role producer">P</span> Producer</span>
+        <span><span class="role consumer">C</span> Consumer</span>
         <span class="tag">AI Moves</span>
         <span class="tag">Stockfish Engine</span>
         <span class="tag">Game Persistence</span>
       </div>
       <div class="footer">
         <span>Container-Sicht</span>
-        <span>Worker sind Consumer, keine Kafka-Broker</span>
+        <span>Jeder Fluss nutzt eigene Topics &ndash; Worker sind keine Kafka-Broker</span>
       </div>
     </section>
 
     <section class="slide" style="--accent: var(--amber)">
-      <p class="eyebrow">1. KI-Zuege</p>
+      <p class="eyebrow">1. KI-Züge</p>
       <h2>Controller delegiert KI-Berechnung</h2>
       <div class="kafka-flow">
-        <div class="node">Controller<br><span class="small">KafkaAiCoordinator</span></div>
-        <div class="arrow">&rarr;</div>
-        <div class="kafka-box">
-          <div class="kafka-title">Kafka</div>
-          <div class="topic-pill">chess-ai-requests<span class="small">AiMoveRequest</span></div>
-          <div class="topic-pill">chess-ai-responses<span class="small">AiMoveResponse</span></div>
+        <div class="node">Controller<br><span class="small">KafkaAiCoordinator</span>
+          <div class="roles"><span class="role producer">Producer</span><span class="role consumer">Consumer</span></div>
         </div>
-        <div class="arrow">&rarr;</div>
-        <div class="node">kafka-scala-worker<br><span class="small">KafkaAiWorker</span></div>
+        <div class="arrow">&hArr;</div>
+        <div class="kafka-box">
+          <div class="kafka-title">Kafka &middot; 2 Topics</div>
+          <div class="topic-pill request">
+            <span class="topic-dir">Request-Topic &middot; Controller &rarr; Worker</span>
+            <span class="topic-name">chess-ai-requests</span>
+            <span class="small">AiMoveRequest</span>
+          </div>
+          <div class="topic-pill response">
+            <span class="topic-dir">Response-Topic &middot; Worker &rarr; Controller</span>
+            <span class="topic-name">chess-ai-responses</span>
+            <span class="small">AiMoveResponse</span>
+          </div>
+        </div>
+        <div class="arrow">&hArr;</div>
+        <div class="node">kafka-scala-worker<br><span class="small">KafkaAiWorker</span>
+          <div class="roles"><span class="role consumer">Consumer</span><span class="role producer">Producer</span></div>
+        </div>
       </div>
-      <div class="callout">Der Controller produziert Requests und konsumiert Responses. Die Zuordnung erfolgt ueber <code>requestId</code> und <code>gameId</code>.</div>
+      <div class="callout"><strong>Controller:</strong> produziert auf <code>chess-ai-requests</code>, konsumiert von <code>chess-ai-responses</code>. <strong>Worker:</strong> genau umgekehrt. Zuordnung über <code>requestId</code> und <code>gameId</code>.</div>
       <div class="footer">
         <span>Implementation 1</span>
         <span>Requests und Responses sind Kafka-Topics</span>
@@ -498,17 +614,29 @@
       <p class="eyebrow">2. Stockfish</p>
       <h2>REST-Schnittstelle durch Kafka ersetzt</h2>
       <div class="kafka-flow">
-        <div class="node">Model-Service<br><span class="small">KafkaEngineProxy</span></div>
-        <div class="arrow">&rarr;</div>
-        <div class="kafka-box">
-          <div class="kafka-title">Kafka</div>
-          <div class="topic-pill">stockfish-engine-requests<span class="small">StockfishEngineRequest</span></div>
-          <div class="topic-pill">stockfish-engine-responses<span class="small">StockfishEngineResponse</span></div>
+        <div class="node">Model-Service<br><span class="small">KafkaEngineProxy</span>
+          <div class="roles"><span class="role producer">Producer</span><span class="role consumer">Consumer</span></div>
         </div>
-        <div class="arrow">&rarr;</div>
-        <div class="node">stockfishworker<br><span class="small">Python + Stockfish</span></div>
+        <div class="arrow">&hArr;</div>
+        <div class="kafka-box">
+          <div class="kafka-title">Kafka &middot; 2 Topics</div>
+          <div class="topic-pill request">
+            <span class="topic-dir">Request-Topic &middot; Model &rarr; Worker</span>
+            <span class="topic-name">stockfish-engine-requests</span>
+            <span class="small">StockfishEngineRequest</span>
+          </div>
+          <div class="topic-pill response">
+            <span class="topic-dir">Response-Topic &middot; Worker &rarr; Model</span>
+            <span class="topic-name">stockfish-engine-responses</span>
+            <span class="small">StockfishEngineResponse</span>
+          </div>
+        </div>
+        <div class="arrow">&hArr;</div>
+        <div class="node">stockfishworker<br><span class="small">Python + Stockfish</span>
+          <div class="roles"><span class="role consumer">Consumer</span><span class="role producer">Producer</span></div>
+        </div>
       </div>
-      <div class="callout">Der Model-Service konsumiert die Responses und korreliert sie ueber <code>requestId</code> und <code>clientId</code>.</div>
+      <div class="callout">Der Model-Service produziert Engine-Anfragen und konsumiert die Antworten. Korrelation über <code>requestId</code> und <code>clientId</code> &ndash; jede Model-Instanz ignoriert fremde Antworten.</div>
       <div class="footer">
         <span>Implementation 2</span>
         <span>Kafka ersetzt die direkte REST-Kopplung</span>
@@ -517,25 +645,35 @@
 
     <section class="slide" style="--accent: var(--green)">
       <p class="eyebrow">3. Persistenz</p>
-      <h2>MongoDB-Write wird vom Consumer ausgefuehrt</h2>
+      <h2>MongoDB-Write wird vom Consumer ausgeführt</h2>
       <div class="kafka-flow">
-        <div class="node">Controller<br><span class="small">KafkaPublishingGameRepository</span></div>
+        <div class="node">Controller<br><span class="small">KafkaPublishingGameRepository</span>
+          <div class="roles"><span class="role producer">Producer</span></div>
+        </div>
         <div class="arrow">&rarr;</div>
         <div class="kafka-box">
-          <div class="kafka-title">Kafka</div>
-          <div class="topic-pill">game-persistence-requests<span class="small">GamePersistenceEvent</span></div>
+          <div class="kafka-title">Kafka &middot; 1 Topic</div>
+          <div class="topic-pill request">
+            <span class="topic-dir">Event-Topic &middot; Controller &rarr; Worker</span>
+            <span class="topic-name">game-persistence-requests</span>
+            <span class="small">GamePersistenceEvent</span>
+          </div>
         </div>
         <div class="arrow">&rarr;</div>
-        <div class="node">kafka-scala-worker<br><span class="small">KafkaGamePersistenceConsumer</span></div>
+        <div class="node">kafka-scala-worker<br><span class="small">KafkaGamePersistenceConsumer</span>
+          <div class="roles"><span class="role consumer">Consumer</span></div>
+          <div class="small" style="margin-top: 8px;">&darr; schreibt nach <strong>MongoDB</strong></div>
+        </div>
       </div>
+      <div class="callout"><strong>Einbahn-Fluss:</strong> Es gibt kein Response-Topic. Der Controller ist reiner Producer, der Worker reiner Consumer &ndash; die Antwort ist der DB-Write selbst.</div>
       <div class="grid-2">
         <div class="card">
-          <strong>Controller</strong>
-          <p>Haelt lokale History fuer direkte UI-Reaktion und publiziert Persistenz-Events.</p>
+          <strong>Controller (Producer)</strong>
+          <p>Hält lokale History für direkte UI-Reaktion und publiziert Persistenz-Events &ndash; ohne auf den DB-Write zu warten.</p>
         </div>
         <div class="card">
-          <strong>Consumer</strong>
-          <p>Schreibt nach MongoDB und committed Offsets erst nach erfolgreichem DB-Write.</p>
+          <strong>Worker (Consumer)</strong>
+          <p>Schreibt nach MongoDB und committet den Offset <strong>erst nach</strong> erfolgreichem DB-Write (manuelles Commit, at-least-once).</p>
         </div>
       </div>
       <div class="footer">
@@ -546,8 +684,8 @@
 
   </main>
 
-  <nav class="controls" aria-label="Praesentation Navigation">
-    <button id="prev" type="button">Zurueck</button>
+  <nav class="controls" aria-label="Präsentation Navigation">
+    <button id="prev" type="button">Zurück</button>
     <span class="counter" id="counter">1 / 5</span>
     <button id="next" type="button">Weiter</button>
   </nav>
@@ -560,10 +698,16 @@
     function show(nextIndex) {
       slides[index].classList.remove("active");
       index = Math.max(0, Math.min(slides.length - 1, nextIndex));
-      slides[index].classList.add("active");
+      const current = slides[index];
+      current.classList.add("active");
+      current.style.setProperty("--progress", `${((index + 1) / slides.length) * 100}%`);
       counter.textContent = `${index + 1} / ${slides.length}`;
       history.replaceState(null, "", `#${index + 1}`);
     }
+
+    slides.forEach((slide, i) => {
+      slide.style.setProperty("--progress", `${((i + 1) / slides.length) * 100}%`);
+    });
 
     document.getElementById("prev").addEventListener("click", () => show(index - 1));
     document.getElementById("next").addEventListener("click", () => show(index + 1));
