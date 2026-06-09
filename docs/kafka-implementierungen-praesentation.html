@@ -542,6 +542,37 @@
     </section>
 
     <section class="slide" style="--accent: var(--green)">
+      <p class="eyebrow">Grundidee</p>
+      <h2>Was ist Kafka?</h2>
+      <p>Kafka ist eine Event-Streaming-Plattform. Services senden Nachrichten nicht direkt aneinander, sondern schreiben Events in Topics, aus denen andere Services sie asynchron lesen.</p>
+      <div class="flow">
+        <div class="node">Producer<br><span class="small">sendet Events</span></div>
+        <div class="arrow">&rarr;</div>
+        <div class="node topic">Kafka Topic<br><span class="small">geordnetes Event-Log</span></div>
+        <div class="arrow">&rarr;</div>
+        <div class="node">Consumer<br><span class="small">liest Events</span></div>
+      </div>
+      <div class="grid-3">
+        <div class="card">
+          <strong>Entkopplung</strong>
+          <p>Producer und Consumer müssen nicht gleichzeitig verfügbar sein.</p>
+        </div>
+        <div class="card">
+          <strong>Asynchronität</strong>
+          <p>Anfragen können verarbeitet werden, ohne dass der aufrufende Service blockiert.</p>
+        </div>
+        <div class="card">
+          <strong>Skalierung</strong>
+          <p>Mehrere Consumer können Nachrichten parallel verarbeiten.</p>
+        </div>
+      </div>
+      <div class="footer">
+        <span>Grundlagen</span>
+        <span>Kafka vermittelt Events zwischen Services</span>
+      </div>
+    </section>
+
+    <section class="slide" style="--accent: var(--green)">
       <p class="eyebrow">Gesamtarchitektur</p>
       <h2>Ein Broker, drei Kafka-Flüsse</h2>
       <div class="architecture">
@@ -555,13 +586,13 @@
         </div>
         <div class="broker">Kafka<br><span class="small">5 Topics &middot; Consumer Groups</span></div>
         <div class="stack">
-          <div class="node">kafka-scala-worker
+          <div class="node">AI-Worker
             <div class="roles"><span class="role consumer">C</span><span class="role producer">P</span></div>
           </div>
-          <div class="node">stockfishworker
+          <div class="node">Stockfish-Worker
             <div class="roles"><span class="role consumer">C</span><span class="role producer">P</span></div>
           </div>
-          <div class="node">MongoDB<br><span class="small">Sink</span></div>
+          <div class="node">MongoDB<br><span class="small"></span></div>
         </div>
       </div>
       <div class="legend">
@@ -632,7 +663,7 @@
           </div>
         </div>
         <div class="arrow">&hArr;</div>
-        <div class="node">stockfishworker<br><span class="small">Python + Stockfish</span>
+        <div class="node">Stockfish-Worker<br><span class="small">Python + Stockfish</span>
           <div class="roles"><span class="role consumer">Consumer</span><span class="role producer">Producer</span></div>
         </div>
       </div>
@@ -660,7 +691,7 @@
           </div>
         </div>
         <div class="arrow">&rarr;</div>
-        <div class="node">kafka-scala-worker<br><span class="small">KafkaGamePersistenceConsumer</span>
+        <div class="node">AI-Worker<br><span class="small">KafkaGamePersistenceConsumer</span>
           <div class="roles"><span class="role consumer">Consumer</span></div>
           <div class="small" style="margin-top: 8px;">&darr; schreibt nach <strong>MongoDB</strong></div>
         </div>
@@ -686,7 +717,7 @@
 
   <nav class="controls" aria-label="Präsentation Navigation">
     <button id="prev" type="button">Zurück</button>
-    <span class="counter" id="counter">1 / 5</span>
+    <span class="counter" id="counter">1 / 6</span>
     <button id="next" type="button">Weiter</button>
   </nav>
 
