@@ -69,6 +69,24 @@ ein Dokument mit `_id = "current"` in `game_analytics_summary`.
 - `timeControlCounts`
 - `generatedAt`
 
+## Anzeige im Web-UI
+
+Die Spark-Zusammenfassung wird im Frontend unter **Statistik** (`/analytics`)
+dargestellt (Kennzahlen + Verteilungsbalken fuer Ergebnis und Zeitkontrolle).
+
+Datenweg:
+
+```text
+spark-analytics -> MongoDB: game_analytics_summary (_id = "current")
+  -> Controller GET /api/controller/analytics/summary
+  -> Web-UI Seite /analytics
+```
+
+Der Controller liest die Summary ueber `MongoAnalyticsSummaryDao` aus Mongo –
+bewusst unabhaengig von `DB_TYPE`, da Spark Analytics immer nach Mongo schreibt.
+Solange noch keine Auswertung existiert (oder Mongo nicht erreichbar ist),
+liefert der Endpoint `available = false`, und das UI zeigt einen Empty-State.
+
 ## Konfiguration
 
 | Variable | Default |

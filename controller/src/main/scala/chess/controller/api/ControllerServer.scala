@@ -14,7 +14,7 @@ import org.http4s.server.middleware.CORS
 import io.circe.*
 import io.circe.syntax.*
 import chess.model.*
-import chess.model.dao.{GameRecordMapper, MongoGameDao, SlickGameDao}
+import chess.model.dao.{GameRecordMapper, MongoAnalyticsSummaryDao, MongoGameDao, SlickGameDao}
 import chess.controller.{Controller, ControllerStreamBridge, GameRegistry, KafkaAiCoordinator}
 import chess.controller.persistence.{KafkaGamePersistencePublisher, KafkaPublishingGameRepository}
 import chess.streaming.ChessStreamApp
@@ -100,11 +100,20 @@ object ControllerServer extends IOApp:
       case _ =>
         directRepository(dbType)
 
+  // Analytics summary is always read from Mongo, independent of DB_TYPE, because
+  // the Spark analytics service persists its results to Mongo regardless of the
+  // primary game store.
+  private def analyticsDaoResource: Resource[IO, MongoAnalyticsSummaryDao] =
+    val uri    = sys.env.getOrElse("MONGO_URI", "mongodb://localhost:27017")
+    val dbName = sys.env.getOrElse("MONGO_DB",  "chess")
+    MongoAnalyticsSummaryDao.resource(uri, dbName)
+
   override def run(args: List[String]): IO[ExitCode] =
     val port = sys.env.getOrElse("PORT", "8081").toInt
 
     makeRepository.use { repo =>
       EmberClientBuilder.default[IO].withTimeout(Duration.Inf).build.use { httpClient =>
+       analyticsDaoResource.use { analyticsDao =>
         for
           ctrl        <- IO(Controller(repo))
           pekkoSystem <- IO(ActorSystem[Nothing](Behaviors.empty, "chess-stream"))
@@ -152,7 +161,8 @@ object ControllerServer extends IOApp:
             tournamentStatusRef,
             tournamentLogQueue,
           )
-          combined     = legacyRoutes <+> multiRoutes <+> tournamentRoutes
+          analyticsRoutes = AnalyticsRoutes(analyticsDao)
+          combined     = legacyRoutes <+> multiRoutes <+> tournamentRoutes <+> analyticsRoutes
           app          = CORS.policy.withAllowOriginAll(jsonAppWithNotFound(combined))
 
           _ <- IO.println(
@@ -166,5 +176,6 @@ object ControllerServer extends IOApp:
             .build
             .useForever
         yield ExitCode.Success
+       }
       }
     }
