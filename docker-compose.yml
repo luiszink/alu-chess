@@ -182,6 +182,28 @@ services:
         condition: service_healthy
         required: false
 
+  # Spark Analytics: Kafka persistence events -> Mongo analytics
+  spark-analytics:
+    build:
+      context: .
+      dockerfile: Dockerfile.sparkanalytics
+    environment:
+      SPARK_KAFKA_BOOTSTRAP_SERVERS: ${SPARK_KAFKA_BOOTSTRAP_SERVERS:-kafka:9092}
+      SPARK_INPUT_TOPIC:             ${SPARK_INPUT_TOPIC:-game-persistence-requests}
+      SPARK_MONGO_URI:               ${SPARK_MONGO_URI:-mongodb://mongo:27017}
+      SPARK_MONGO_DB:                ${SPARK_MONGO_DB:-chess}
+      SPARK_CHECKPOINT_DIR:          ${SPARK_CHECKPOINT_DIR:-/tmp/spark-checkpoints/chess-analytics}
+      SPARK_MASTER:                  ${SPARK_MASTER:-local[*]}
+      SPARK_MAX_OFFSETS_PER_TRIGGER: ${SPARK_MAX_OFFSETS_PER_TRIGGER:-5000}
+      SPARK_LOG_LEVEL:               ${SPARK_LOG_LEVEL:-WARN}
+    volumes:
+      - spark_checkpoints:/tmp/spark-checkpoints
+    depends_on:
+      kafka:
+        condition: service_healthy
+      mongo:
+        condition: service_healthy
+
   # ── Kafka ───────────────────────────────────────────────────────
   kafka:
     image: confluentinc/cp-kafka:7.6.0
@@ -271,3 +293,4 @@ services:
 volumes:
   postgres_data:
   mongo_data:
+  spark_checkpoints:

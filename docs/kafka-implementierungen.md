@@ -166,3 +166,32 @@ docker compose down --remove-orphans
 
 Danach reicht wieder der normale Startbefehl.
 
+## 4. Spark Analytics ueber Kafka
+
+**Ziel:** Spark wertet gespeicherte Partien nachgelagert aus, ohne die
+zustandsbehaftete Pekko-Streams-Pipeline fuer einzelne Zuege zu ersetzen.
+
+```text
+Controller
+  -> Topic: game-persistence-requests
+  -> kafka-scala-worker -> MongoDB: games
+  -> spark-analytics    -> MongoDB: game_analytics, game_analytics_summary
+```
+
+**Consumer:** `spark-analytics`, gestartet ueber `Dockerfile.sparkanalytics`.
+
+**Input Topic:** `game-persistence-requests`.
+
+**Output Collections:**
+
+| Collection | Bedeutung |
+| --- | --- |
+| `game_analytics` | Ein Analytics-Dokument pro Partie |
+| `game_analytics_summary` | Aggregierte Kennzahlen mit `_id = current` |
+
+**Warum Spark hier sinnvoll ist:**
+
+- Spark verarbeitet den vorhandenen Kafka-Eventstrom als Structured Stream.
+- Die Schachlogik bleibt im Model/Controller und wird nicht nach Spark verschoben.
+- Analytics kann unabhaengig skaliert oder deaktiviert werden.
+- MongoDB bleibt die gemeinsame Leseseite fuer gespeicherte Partien und Auswertungen.

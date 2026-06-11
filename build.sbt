@@ -10,6 +10,10 @@ val slickVersion      = "3.5.2"
 val mongo4catsVersion = "0.7.17"
 val pekkoVersion = "1.6.0"
 val pekkoKafkaVersion = "1.1.0"
+val sparkScalaVersion = "2.13.16"
+val sparkVersion = "3.5.3"
+val mongoDriverVersion = "5.2.1"
+val mongoSparkConnectorVersion = "10.4.1"
 
 val assemblySettings = Seq(
   assembly / assemblyMergeStrategy := {
@@ -222,6 +226,32 @@ lazy val root = project
     publish / skip := true,
     Compile / unmanagedSourceDirectories := Nil,
     Test / unmanagedSourceDirectories    := Nil,
+  )
+
+// Spark analytics module. Kept out of the root aggregate because Spark pulls a
+// large dependency graph and is only needed for the analytics service image.
+lazy val sparkAnalytics = project
+  .in(file("spark-analytics"))
+  .settings(
+    version      := "0.1.0-SNAPSHOT",
+    scalaVersion := sparkScalaVersion,
+    assemblySettings,
+    name := "alu-chess-spark-analytics",
+    assembly / mainClass := Some("chess.spark.SparkAnalyticsApp"),
+    Test / fork := true,
+    Test / javaOptions ++= Seq(
+      "--add-opens=java.base/sun.nio.ch=ALL-UNNAMED"
+    ),
+    libraryDependencies ++= Seq(
+      "org.apache.spark" %% "spark-sql"             % sparkVersion,
+      "org.apache.spark" %% "spark-sql-kafka-0-10"  % sparkVersion,
+      "io.circe"         %% "circe-core"            % circeVersion,
+      "io.circe"         %% "circe-parser"          % circeVersion,
+      "org.mongodb"       % "mongodb-driver-sync"   % mongoDriverVersion,
+      "org.mongodb.spark" %% "mongo-spark-connector" % mongoSparkConnectorVersion,
+      "org.scalatest"    %% "scalatest"             % "3.2.19" % Test,
+    ),
+    coverageEnabled := false,
   )
 
 // ── Benchmark module ──────────────────────────────────────────

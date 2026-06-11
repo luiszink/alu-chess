@@ -35,6 +35,7 @@ Inspiration: [Lichess](https://lichess.org/), aber wesentlich einfacher.
 | GUI | Scala Swing 3.0.0 |
 | REST API | Http4s 0.23 + Circe |
 | Reactive Streams | Apache Pekko 1.6.0 + Pekko Streams |
+| Analytics | Apache Spark 3.5 + Kafka Structured Streaming |
 | Container | Docker + Docker Compose |
 | Reverse Proxy | nginx (API Gateway für alle Services) |
 | Architektur | MVC + Observer + Reactive Streams, Multi-Module (sbt) |
@@ -204,6 +205,27 @@ Consumer.plainSource(settings, Subscriptions.topics("chess-moves"))
   .map(r => ByteString(r.value()))
 ```
 Kafka-Broker starten: `docker compose --profile kafka up`
+
+---
+
+## Spark Analytics
+
+Der Service `spark-analytics` liest Kafka-Persistenz-Events aus
+`game-persistence-requests` und schreibt analytische Collections nach MongoDB:
+
+- `game_analytics` mit einem Dokument pro Partie
+- `game_analytics_summary` mit aggregierten Kennzahlen
+
+Spark ersetzt nicht die Pekko-Streams-Pipeline. Pekko verarbeitet weiterhin
+einzelne Zuege zustandsbehaftet; Spark wertet abgeschlossene bzw. gespeicherte
+Partien nachgelagert aus.
+
+```bash
+sbt "sparkAnalytics/test"
+docker compose up --build spark-analytics
+```
+
+Details: [`docs/spark-analytics.md`](docs/spark-analytics.md)
 
 ---
 
