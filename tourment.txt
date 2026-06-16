@@ -1,0 +1,904 @@
+openapi: 3.0.3
+info:
+  title: NowChess Tournament API
+  description: |
+    Bot tournaments with pluggable formats (Swiss, elimination, group stage,
+    league), modelled after the Lichess API style.
+
+    The tournament server is fully self-contained — it manages game state,
+    moves, and outcomes internally.
+
+    ## Streaming
+    Endpoints marked **NDJSON** return newline-delimited JSON objects
+    (`application/x-ndjson`). Each line is one complete JSON object. The
+    connection stays open until the tournament, round, or game ends.
+
+    ## Bot flow
+    ```
+    POST /api/tournament                       # create
+    POST /api/tournament/{id}/join             # each bot joins
+    POST /api/tournament/{id}/start            # director starts
+
+    GET  /api/tournament/{id}/stream  (NDJSON) # open before start
+
+    -- per round --
+    receive gameStart { gameId, color }
+    GET  /api/tournament/{id}/game/{gameId}/stream  (NDJSON)
+    POST /api/tournament/{id}/game/{gameId}/move/{uci}
+    -- repeat --
+
+    GET  /api/tournament/{id}/results (NDJSON) # final standings
+    ```
+  version: 2.0.0
+
+servers:
+  - url: https://tournament.maichess.berger-software.com"
+    description: Staging
+  - url: https://tournament.maichess.berger-software.com"
+    description: Production
+
+security:
+  - bearerAuth: []
+
+tags:
+  - name: Auth
+    description: Identity registration and token issuance
+  - name: Tournament
+    description: Tournament lifecycle
+  - name: Participation
+    description: Join and withdraw
+  - name: Results
+    description: Standings, pairings, and game export
+  - name: Stream
+    description: NDJSON event streams
+  - name: Game
+    description: In-game move submission and state
+
+paths:
+
+  /api/auth/register:
+    post:
+      tags: [Auth]
+      summary: Register a new identity
+      description: |
+        Registers a user or bot identity and returns a JWT. No password
+        required — identity is for attribution, not security.
+
+        The returned token is used as a Bearer token on all authenticated
+        endpoints. The `sub` claim contains the assigned ID; `isBot` is
+        set according to the request.
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/RegisterRequest"
+      responses:
+        "201":
+          description: Identity registered
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RegisterResponse"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+
+  /api/tournament:
+    get:
+      tags: [Tournament]
+      summary: Get current tournaments
+      description: Returns tournaments grouped by status. No auth required.
+      security: []
+      responses:
+        "200":
+          description: Tournaments by status
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  created:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/TournamentInfo"
+                  started:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/TournamentInfo"
+                  finished:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/TournamentInfo"
+
+    post:
+      tags: [Tournament]
+      summary: Create a new tournament
+      description: The authenticated user becomes the tournament director.
+      requestBody:
+        required: true
+        content:
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: "#/components/schemas/CreateTournamentForm"
+      responses:
+        "201":
+          description: Tournament created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Tournament"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+
+  /api/tournament/{id}:
+    parameters:
+      - $ref: "#/components/parameters/id"
+
+    get:
+      tags: [Tournament]
+      summary: Get a tournament
+      description: Includes the first page of standings in the `standing` field.
+      security: []
+      responses:
+        "200":
+          description: Tournament with embedded standings
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Tournament"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+    delete:
+      tags: [Tournament]
+      summary: Terminate a tournament
+      description: Only the director may terminate. Only allowed while status is `created`.
+      responses:
+        "204":
+          description: Terminated
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
+
+  /api/tournament/{id}/start:
+    parameters:
+      - $ref: "#/components/parameters/id"
+
+    post:
+      tags: [Tournament]
+      summary: Start the tournament
+      description: |
+        Only the director may start. Requires at least 2 joined bots.
+        Computes round 1 pairings and creates games internally.
+      responses:
+        "200":
+          description: Tournament started
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Tournament"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
+
+  /api/tournament/{id}/join:
+    parameters:
+      - $ref: "#/components/parameters/id"
+
+    post:
+      tags: [Participation]
+      summary: Join a tournament
+      description: |
+        Register the authenticated bot for the tournament. Only allowed while
+        status is `created`. The token subject must be a bot account.
+      responses:
+        "200":
+          description: Ok
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Ok"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
+
+  /api/tournament/{id}/withdraw:
+    parameters:
+      - $ref: "#/components/parameters/id"
+
+    post:
+      tags: [Participation]
+      summary: Withdraw from a tournament
+      description: Only allowed while status is `created`.
+      responses:
+        "200":
+          description: Ok
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Ok"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
+
+  /api/tournament/{id}/results:
+    parameters:
+      - $ref: "#/components/parameters/id"
+
+    get:
+      tags: [Results]
+      summary: Get results as NDJSON stream
+      description: |
+        Streams one `Result` object per line, sorted by rank ascending.
+        Available at any point during or after the tournament.
+      security: []
+      parameters:
+        - name: nb
+          in: query
+          description: Max number of results to stream (default all)
+          schema:
+            type: integer
+            minimum: 1
+      responses:
+        "200":
+          description: NDJSON stream of results
+          content:
+            application/x-ndjson:
+              schema:
+                $ref: "#/components/schemas/Result"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /api/tournament/{id}/round/{round}:
+    parameters:
+      - $ref: "#/components/parameters/id"
+      - name: round
+        in: path
+        required: true
+        schema:
+          type: integer
+          minimum: 1
+
+    get:
+      tags: [Results]
+      summary: Get pairings for a round
+      security: []
+      responses:
+        "200":
+          description: Pairings for the specified round
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  round:
+                    type: integer
+                    example: 2
+                  pairings:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/Pairing"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /api/tournament/{id}/export/games:
+    parameters:
+      - $ref: "#/components/parameters/id"
+
+    get:
+      tags: [Results]
+      summary: Export all games
+      description: |
+        Returns all games of the tournament. Accepts both PGN and NDJSON via
+        the `Accept` header.
+      security: []
+      parameters:
+        - name: Accept
+          in: header
+          schema:
+            type: string
+            enum:
+              - application/x-chess-pgn
+              - application/x-ndjson
+            default: application/x-chess-pgn
+      responses:
+        "200":
+          description: Games in the requested format
+          content:
+            application/x-chess-pgn:
+              schema:
+                type: string
+                description: Standard PGN, one game per block
+            application/x-ndjson:
+              schema:
+                $ref: "#/components/schemas/GameExport"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /api/tournament/{id}/stream:
+    parameters:
+      - $ref: "#/components/parameters/id"
+
+    get:
+      tags: [Stream]
+      summary: Stream tournament events
+      description: |
+        NDJSON stream scoped to one tournament. Keep this connection open for
+        the full tournament lifetime.
+
+        On `gameStart` the bot connects to the game endpoints:
+        - `GET /api/tournament/{id}/game/{gameId}/stream` — stream game state
+        - `POST /api/tournament/{id}/game/{gameId}/move/{uci}` — submit moves
+      responses:
+        "200":
+          description: NDJSON event stream
+          content:
+            application/x-ndjson:
+              schema:
+                $ref: "#/components/schemas/TournamentEvent"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /api/tournament/{id}/game/{gameId}:
+    parameters:
+      - $ref: "#/components/parameters/id"
+      - $ref: "#/components/parameters/gameId"
+
+    get:
+      tags: [Game]
+      summary: Get current game state
+      description: Returns the full state of a game including moves played so far.
+      security: []
+      responses:
+        "200":
+          description: Game state
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/GameState"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /api/tournament/{id}/game/{gameId}/stream:
+    parameters:
+      - $ref: "#/components/parameters/id"
+      - $ref: "#/components/parameters/gameId"
+
+    get:
+      tags: [Game]
+      summary: Stream game events
+      description: |
+        NDJSON stream of game events. Emits the full game state on connect,
+        then one event per move or status change. Connection closes when the
+        game ends.
+      responses:
+        "200":
+          description: NDJSON game event stream
+          content:
+            application/x-ndjson:
+              schema:
+                $ref: "#/components/schemas/GameEvent"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /api/tournament/{id}/game/{gameId}/move/{uci}:
+    parameters:
+      - $ref: "#/components/parameters/id"
+      - $ref: "#/components/parameters/gameId"
+      - name: uci
+        in: path
+        required: true
+        description: UCI move notation (e.g. e2e4, e7e8q)
+        schema:
+          type: string
+          example: e2e4
+
+    post:
+      tags: [Game]
+      summary: Submit a move
+      description: |
+        Submit a move in UCI notation. Only the bot whose turn it is may
+        submit. The bot's identity is derived from the JWT — no bot can
+        play as another.
+      responses:
+        "200":
+          description: Move accepted
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Ok"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
+
+components:
+
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+
+  parameters:
+    id:
+      name: id
+      in: path
+      required: true
+      schema:
+        type: string
+      example: t7kXq2
+
+    gameId:
+      name: gameId
+      in: path
+      required: true
+      schema:
+        type: string
+      example: j0nPtcjl
+
+  schemas:
+
+    RegisterRequest:
+      type: object
+      required: [name]
+      properties:
+        name:
+          type: string
+          description: Display name for this identity
+          example: MyChessBot
+        isBot:
+          type: boolean
+          default: false
+          description: Whether this identity represents a bot (true) or a user/director (false)
+
+    RegisterResponse:
+      type: object
+      properties:
+        id:
+          type: string
+          description: Assigned identity ID (used as JWT subject)
+          example: usr_a1b2c3
+        token:
+          type: string
+          description: JWT bearer token for subsequent requests
+          example: eyJhbGciOiJIUzI1NiJ9...
+
+    Clock:
+      type: object
+      required: [limit, increment]
+      properties:
+        limit:
+          type: integer
+          description: Base time in seconds
+          example: 300
+        increment:
+          type: integer
+          description: Increment per move in seconds
+          example: 3
+
+    Variant:
+      type: object
+      properties:
+        key:
+          type: string
+          example: standard
+        name:
+          type: string
+          example: Standard
+
+    BotRef:
+      type: object
+      properties:
+        id:
+          type: string
+          example: bot_abc
+        name:
+          type: string
+          example: StockfishClone
+
+    Standing:
+      type: object
+      properties:
+        page:
+          type: integer
+          example: 1
+        players:
+          type: array
+          items:
+            $ref: "#/components/schemas/Result"
+
+    TournamentInfo:
+      description: Lightweight tournament summary used in list responses.
+      type: object
+      properties:
+        id:
+          type: string
+          example: t7kXq2
+        fullName:
+          type: string
+          example: Friday Night Bots Swiss
+        clock:
+          $ref: "#/components/schemas/Clock"
+        variant:
+          $ref: "#/components/schemas/Variant"
+        rated:
+          type: boolean
+          example: true
+        nbPlayers:
+          type: integer
+          example: 8
+        nbRounds:
+          type: integer
+          example: 5
+        format:
+          type: string
+          enum: [swiss, singleElimination, doubleElimination, groupStage, league]
+          example: swiss
+        matchesPerPairing:
+          type: integer
+          description: Number of games per pairing (1 = single game, 3 = best of 3, etc.)
+          example: 1
+        startPosition:
+          type: string
+          description: FEN string for custom start position, or "standard"
+          example: standard
+        createdBy:
+          type: string
+          example: userId
+        startsAt:
+          type: string
+          format: date-time
+
+    Tournament:
+      allOf:
+        - $ref: "#/components/schemas/TournamentInfo"
+        - type: object
+          properties:
+            status:
+              type: string
+              enum: [created, started, finished]
+              example: started
+            round:
+              type: integer
+              description: Current round number
+              example: 2
+            standing:
+              $ref: "#/components/schemas/Standing"
+            winner:
+              description: Present only when status is `finished`
+              allOf:
+                - $ref: "#/components/schemas/BotRef"
+              nullable: true
+
+    CreateTournamentForm:
+      type: object
+      required: [name, nbRounds, clockLimit, clockIncrement]
+      properties:
+        name:
+          type: string
+          example: Friday Night Bots
+        nbRounds:
+          type: integer
+          minimum: 1
+          example: 5
+        clockLimit:
+          type: integer
+          description: Base time in seconds
+          example: 300
+        clockIncrement:
+          type: integer
+          description: Increment per move in seconds
+          example: 3
+        rated:
+          type: boolean
+          default: true
+        format:
+          type: string
+          enum: [swiss, singleElimination, doubleElimination, groupStage, league]
+          default: swiss
+          description: Tournament format
+        startPosition:
+          type: string
+          description: FEN string for custom starting position. Omit or "standard" for normal chess.
+          default: standard
+        matchesPerPairing:
+          type: integer
+          minimum: 1
+          default: 1
+          description: Games per pairing (use odd numbers for best-of-N, e.g. 3 for best of 3)
+        groupSize:
+          type: integer
+          minimum: 2
+          description: Required when format is `groupStage`. Number of bots per group.
+
+    Result:
+      type: object
+      properties:
+        rank:
+          type: integer
+          example: 1
+        points:
+          type: number
+          format: double
+          example: 3.5
+        tieBreak:
+          type: number
+          format: double
+          description: Buchholz score (sum of opponents' points)
+          example: 9.0
+        bot:
+          $ref: "#/components/schemas/BotRef"
+        nbGames:
+          type: integer
+          example: 4
+        wins:
+          type: integer
+          example: 3
+        draws:
+          type: integer
+          example: 1
+        losses:
+          type: integer
+          example: 0
+
+    Pairing:
+      type: object
+      properties:
+        round:
+          type: integer
+          example: 2
+        white:
+          $ref: "#/components/schemas/BotRef"
+        black:
+          $ref: "#/components/schemas/BotRef"
+        gameId:
+          type: string
+          description: ID of the first (or only) game in this pairing
+          example: j0nPtcjl
+        matchesPerPairing:
+          type: integer
+          description: Total games in this pairing
+          example: 1
+        matchResults:
+          type: array
+          description: Results of individual games within the pairing
+          items:
+            type: object
+            properties:
+              gameId:
+                type: string
+              winner:
+                type: string
+                enum: [white, black, draw]
+                nullable: true
+        winner:
+          type: string
+          enum: [white, black, draw]
+          nullable: true
+          description: Aggregate result. Null while the pairing is ongoing.
+
+    GameState:
+      description: Full state of a game in progress or completed.
+      type: object
+      properties:
+        id:
+          type: string
+          example: j0nPtcjl
+        tournamentId:
+          type: string
+          example: t7kXq2
+        round:
+          type: integer
+          example: 2
+        white:
+          $ref: "#/components/schemas/BotRef"
+        black:
+          $ref: "#/components/schemas/BotRef"
+        moves:
+          type: string
+          description: Space-separated UCI moves
+          example: e2e4 e7e5 g1f3
+        fen:
+          type: string
+          description: Current board position in FEN
+          example: rnbqkbnr/pppppppp/8/8/4P3/8/PPPP1PPP/RNBQKBNR b KQkq e3 0 1
+        status:
+          type: string
+          enum: [ongoing, checkmate, stalemate, draw, resigned, timeout]
+          example: ongoing
+        turn:
+          type: string
+          enum: [white, black]
+          example: white
+        winner:
+          type: string
+          enum: [white, black]
+          nullable: true
+          description: Null while the game is ongoing or if drawn
+        clock:
+          type: object
+          properties:
+            whiteTime:
+              type: number
+              description: Remaining time for white in seconds
+            blackTime:
+              type: number
+              description: Remaining time for black in seconds
+        startPosition:
+          type: string
+          description: Starting FEN (standard or custom)
+
+    GameEvent:
+      description: |
+        One JSON object per NDJSON line. Discriminate on `type`.
+
+        | type | extra fields |
+        |------|-------------|
+        | `gameState` | full `GameState` snapshot |
+        | `move` | `uci`, `fen`, `turn`, `clock` |
+        | `gameEnd` | `winner`, `status` |
+      type: object
+      required: [type]
+      properties:
+        type:
+          type: string
+          enum: [gameState, move, gameEnd]
+        uci:
+          type: string
+          example: e2e4
+        fen:
+          type: string
+        turn:
+          type: string
+          enum: [white, black]
+        clock:
+          type: object
+          properties:
+            whiteTime:
+              type: number
+            blackTime:
+              type: number
+        winner:
+          type: string
+          enum: [white, black]
+          nullable: true
+        status:
+          type: string
+          enum: [checkmate, stalemate, draw, resigned, timeout]
+
+    GameExport:
+      description: One game object per NDJSON line.
+      type: object
+      properties:
+        id:
+          type: string
+          example: j0nPtcjl
+        round:
+          type: integer
+          example: 2
+        white:
+          $ref: "#/components/schemas/BotRef"
+        black:
+          $ref: "#/components/schemas/BotRef"
+        winner:
+          type: string
+          enum: [white, black, draw]
+          nullable: true
+        moves:
+          type: string
+          description: Space-separated UCI moves
+          example: e2e4 e7e5 g1f3
+
+    TournamentEvent:
+      description: |
+        One JSON object per NDJSON line. Discriminate on `type`.
+
+        | type | extra fields |
+        |------|-------------|
+        | `tournamentStarted` | — |
+        | `roundStarted` | `round` |
+        | `gameStart` | `round`, `gameId`, `color` |
+        | `roundFinished` | `round` |
+        | `tournamentFinished` | `winner` |
+      type: object
+      required: [type]
+      properties:
+        type:
+          type: string
+          enum:
+            - tournamentStarted
+            - roundStarted
+            - gameStart
+            - roundFinished
+            - tournamentFinished
+        round:
+          type: integer
+          example: 2
+        gameId:
+          type: string
+          example: j0nPtcjl
+        color:
+          type: string
+          enum: [white, black]
+        winner:
+          $ref: "#/components/schemas/BotRef"
+
+    Ok:
+      type: object
+      properties:
+        ok:
+          type: boolean
+          example: true
+
+    Error:
+      type: object
+      properties:
+        error:
+          type: string
+          example: tournament already started
+
+  responses:
+    BadRequest:
+      description: Invalid request body or parameters
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Error"
+    Unauthorized:
+      description: Missing or invalid JWT
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Error"
+    Forbidden:
+      description: Action not permitted for this user or bot
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Error"
+    NotFound:
+      description: Tournament or game not found
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Error"
+    Conflict:
+      description: Conflicting state (e.g. already started, bot already joined, not your turn)
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Error"

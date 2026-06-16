@@ -1,8 +1,15 @@
 # syntax=docker/dockerfile:1
 FROM sbtscala/scala-sbt:eclipse-temurin-alpine-25.0.1_8_1.12.9_3.3.7 AS build
 WORKDIR /workspace
+# Abhängigkeiten cachen, bevor Source kopiert wird (wie bei den übrigen Services),
+# damit Source-Änderungen nicht den kompletten Dependency-Download wiederholen.
+COPY build.sbt .
+COPY project/ project/
+RUN sbt update
 COPY . .
-RUN sbt --error 'lichess/assembly'
+# Bewusst ohne --error: sonst werden echte Fehlerursachen (z. B. OOM, Resolve-Fehler)
+# verschluckt und der Build endet nur mit "exit code 1".
+RUN sbt 'lichess/assembly'
 
 FROM eclipse-temurin:17-jre-alpine
 RUN apk add --no-cache curl

@@ -1,28 +1,65 @@
 package chess.controller
 
-import org.apache.pekko.actor.typed.ActorSystem
-import org.apache.pekko.stream.scaladsl.Source
-import org.apache.pekko.stream.OverflowStrategy
-import org.apache.pekko.util.ByteString
 import chess.util.Observer
+import org.apache.kafka.clients.consumer.ConsumerConfig
+import org.apache.kafka.clients.producer.ProducerRecord
+import org.apache.kafka.common.serialization.{StringDeserializer, StringSerializer}
+import org.apache.pekko.actor.typed.ActorSystem
+import org.apache.pekko.kafka.scaladsl.{Consumer, Producer}
+import org.apache.pekko.kafka.{ConsumerSettings, ProducerSettings, Subscriptions}
+import org.apache.pekko.stream.scaladsl.Source
+import org.apache.pekko.stream.{OverflowStrategy, QueueOfferResult}
+import org.apache.pekko.util.ByteString
 
-/** Verbindet das Observer-Pattern des Controllers mit einer Pekko-Stream-Source.
+import java.util.UUID
+import scala.concurrent.ExecutionContext
+
+/** Connects controller move notifications to Kafka and exposes them as a Pekko Source.
   *
-  * Jeder Spielzug ruft update() auf → wird als DSL-Zeile ("e2 e4") in die Queue gepusht.
-  * Die gameSource kann direkt in ChessStreamApp.run() übergeben werden.
-  *
-  * Nächste Woche (Kafka): Diese Bridge fällt weg; stattdessen wird ein
-  * Kafka-Producer in update() aufgerufen und ein Consumer als Source genutzt.
+  * Moves are written as the existing DSL line format, for example "e2 e4".
+  * The stream consumer reads the same topic and filters by this controller session key.
   */
-class ControllerStreamBridge(controller: Controller)(using ActorSystem[?])
+class ControllerStreamBridge(controller: Controller)(using system: ActorSystem[?])
     extends Observer:
 
-  private val (queue, _source) =
-    Source.queue[ByteString](bufferSize = 64, OverflowStrategy.dropHead)
-      .preMaterialize()
+  private given ec: ExecutionContext = system.executionContext
 
-  // DropHead: wenn die Pipeline zu langsam ist, wird der älteste Eintrag verworfen.
-  // So blockiert Streaming nie die UI.
+  private val bootstrapServers =
+    sys.env.getOrElse("KAFKA_BOOTSTRAP_SERVERS", "localhost:9092")
+  private val movesTopic =
+    sys.env.getOrElse("KAFKA_TOPIC_MOVES", "chess-moves")
+  private val sessionId =
+    sys.env.getOrElse("KAFKA_SESSION_ID", UUID.randomUUID().toString)
+  private val consumerGroupId =
+    sys.env.getOrElse("KAFKA_CONSUMER_GROUP_ID", s"alu-chess-streaming-$sessionId")
+
+  private val producerSettings =
+    ProducerSettings(
+      system.settings.config.getConfig("pekko.kafka.producer"),
+      new StringSerializer,
+      new StringSerializer,
+    ).withBootstrapServers(bootstrapServers)
+
+  private val consumerSettings =
+    ConsumerSettings(
+      system.settings.config.getConfig("pekko.kafka.consumer"),
+      new StringDeserializer,
+      new StringDeserializer,
+    )
+      .withBootstrapServers(bootstrapServers)
+      .withGroupId(consumerGroupId)
+      .withProperty(ConsumerConfig.AUTO_OFFSET_RESET_CONFIG, "earliest")
+      .withProperty(ConsumerConfig.ENABLE_AUTO_COMMIT_CONFIG, "true")
+
+  private val (producerQueue, producerDone) =
+    Source
+      .queue[ProducerRecord[String, String]](bufferSize = 64, OverflowStrategy.backpressure)
+      .toMat(Producer.plainSink(producerSettings))(org.apache.pekko.stream.scaladsl.Keep.both)
+      .run()
+
+  producerDone.failed.foreach { ex =>
+    println(s"Kafka producer stream failed: ${ex.getMessage}")
+  }
 
   private var lastSentMoveCount: Int = 0
 
@@ -30,13 +67,29 @@ class ControllerStreamBridge(controller: Controller)(using ActorSystem[?])
 
   override def update(): Unit =
     val moves = controller.latestMoveHistory
-    // Spielneustart: Zähler zurücksetzen
     if moves.size < lastSentMoveCount then lastSentMoveCount = 0
-    // Neue Züge senden
+
     if moves.size > lastSentMoveCount then
       for entry <- moves.drop(lastSentMoveCount) do
         val promoStr = entry.move.promotion.map(p => s" $p").getOrElse("")
-        queue.offer(ByteString(s"${entry.move.from} ${entry.move.to}$promoStr\n"))
+        val line = s"${entry.move.from} ${entry.move.to}$promoStr\n"
+        val record = ProducerRecord[String, String](movesTopic, sessionId, line)
+
+        producerQueue.offer(record).foreach {
+          case QueueOfferResult.Enqueued =>
+            ()
+          case QueueOfferResult.Dropped =>
+            println(s"Kafka producer queue dropped move: $line")
+          case QueueOfferResult.QueueClosed =>
+            println(s"Kafka producer queue is closed; move was not sent: $line")
+          case QueueOfferResult.Failure(ex) =>
+            println(s"Kafka producer queue failed for move '$line': ${ex.getMessage}")
+        }
+
       lastSentMoveCount = moves.size
 
-  def gameSource: Source[ByteString, ?] = _source
+  def gameSource: Source[ByteString, ?] =
+    Consumer
+      .plainSource(consumerSettings, Subscriptions.topics(movesTopic))
+      .filter(record => record.key() == sessionId)
+      .map(record => ByteString(record.value()))

@@ -9,6 +9,11 @@ val circeVersion  = "0.14.10"
 val slickVersion      = "3.5.2"
 val mongo4catsVersion = "0.7.17"
 val pekkoVersion = "1.6.0"
+val pekkoKafkaVersion = "1.1.0"
+val sparkScalaVersion = "2.13.16"
+val sparkVersion = "3.5.3"
+val mongoDriverVersion = "5.2.1"
+val mongoSparkConnectorVersion = "10.4.1"
 
 val assemblySettings = Seq(
   assembly / assemblyMergeStrategy := {
@@ -58,6 +63,10 @@ lazy val model = project
       // MongoDB via mongo4cats (Cats Effect wrapper)
       "io.github.kirill5k" %% "mongo4cats-core"  % mongo4catsVersion,
       "io.github.kirill5k" %% "mongo4cats-circe" % mongo4catsVersion,
+      // Kafka transport for Stockfish engine requests
+      "org.apache.pekko" %% "pekko-stream"           % pekkoVersion,
+      "org.apache.pekko" %% "pekko-actor-typed"      % pekkoVersion,
+      "org.apache.pekko" %% "pekko-connectors-kafka" % pekkoKafkaVersion,
     ),
     coverageMinimumStmtTotal   := 90,
     coverageMinimumBranchTotal := 90,
@@ -69,7 +78,7 @@ lazy val model = project
 // Depends on Model for domain types.
 lazy val controller = project
   .in(file("controller"))
-  .dependsOn(model, streaming)
+  .dependsOn(model, streaming, tournament)
   .settings(
     commonSettings,
     assemblySettings,
@@ -83,6 +92,8 @@ lazy val controller = project
       "org.http4s" %% "http4s-ember-client" % http4sVersion,
       "org.http4s" %% "http4s-circe"        % http4sVersion,
       "org.http4s" %% "http4s-dsl"          % http4sVersion,
+      // Kafka transport for controller -> streaming bridge
+      "org.apache.pekko" %% "pekko-connectors-kafka" % pekkoKafkaVersion,
     ),
     coverageExcludedPackages := "chess\\.aview\\.gui\\..*;chess\\.Chess\\$package",
     coverageExcludedFiles    := ".*Chess\\.scala",
@@ -128,9 +139,32 @@ lazy val streaming = project
     libraryDependencies ++= Seq(
       "org.apache.pekko" %% "pekko-stream"      % pekkoVersion,
       "org.apache.pekko" %% "pekko-actor-typed" % pekkoVersion,
-      // Nächste Woche Kafka:
-      // "org.apache.pekko" %% "pekko-connectors-kafka" % "1.1.0",
     ),
+  )
+
+// Kafka worker for asynchronous Human-vs-AI moves.
+lazy val aiworker = project
+  .in(file("aiworker"))
+  .dependsOn(model)
+  .settings(
+    commonSettings,
+    assemblySettings,
+    name := "alu-chess-aiworker",
+    assembly / mainClass := Some("chess.aiworker.KafkaWorkerApp"),
+    libraryDependencies ++= Seq(
+      "io.circe" %% "circe-core"    % circeVersion,
+      "io.circe" %% "circe-generic" % circeVersion,
+      "io.circe" %% "circe-parser"  % circeVersion,
+      "org.apache.pekko" %% "pekko-stream"           % pekkoVersion,
+      "org.apache.pekko" %% "pekko-actor-typed"      % pekkoVersion,
+      "org.apache.pekko" %% "pekko-connectors-kafka" % pekkoKafkaVersion,
+      "com.typesafe.slick" %% "slick"          % slickVersion,
+      "com.typesafe.slick" %% "slick-hikaricp" % slickVersion,
+      "org.postgresql"      % "postgresql"      % "42.7.4",
+      "io.github.kirill5k" %% "mongo4cats-core"  % mongo4catsVersion,
+      "io.github.kirill5k" %% "mongo4cats-circe" % mongo4catsVersion,
+    ),
+    coverageEnabled := false,
   )
 
 // ── Lichess module ────────────────────────────────────────────
@@ -159,15 +193,65 @@ lazy val lichess = project
     coverageEnabled := false,
   )
 
+// ── Tournament module ─────────────────────────────────────────
+// Controller-mounted module that connects to NowChess Tournament API:
+//   - Registers bot, joins/creates tournaments
+//   - Streams tournament events and plays games using chess.model.ai.ChessAI
+//   - Exposes routes through ControllerServer; it must not start its own server
+lazy val tournament = project
+  .in(file("tournament"))
+  .dependsOn(model)
+  .settings(
+    commonSettings,
+    assemblySettings,
+    name := "alu-chess-tournament",
+    libraryDependencies ++= Seq(
+      "io.circe" %% "circe-core"    % circeVersion,
+      "io.circe" %% "circe-generic" % circeVersion,
+      "io.circe" %% "circe-parser"  % circeVersion,
+      "org.http4s" %% "http4s-ember-server" % http4sVersion,
+      "org.http4s" %% "http4s-ember-client" % http4sVersion,
+      "org.http4s" %% "http4s-circe"        % http4sVersion,
+      "org.http4s" %% "http4s-dsl"          % http4sVersion,
+    ),
+    coverageEnabled := false,
+  )
+
 // ── Root aggregate ────────────────────────────────────────────
 lazy val root = project
   .in(file("."))
-  .aggregate(model, controller, playerservice, streaming, lichess)
+  .aggregate(model, controller, playerservice, streaming, aiworker, lichess, tournament)
   .settings(
     name := "alu-chess",
     publish / skip := true,
     Compile / unmanagedSourceDirectories := Nil,
     Test / unmanagedSourceDirectories    := Nil,
+  )
+
+// Spark analytics module. Kept out of the root aggregate because Spark pulls a
+// large dependency graph and is only needed for the analytics service image.
+lazy val sparkAnalytics = project
+  .in(file("spark-analytics"))
+  .settings(
+    version      := "0.1.0-SNAPSHOT",
+    scalaVersion := sparkScalaVersion,
+    assemblySettings,
+    name := "alu-chess-spark-analytics",
+    assembly / mainClass := Some("chess.spark.SparkAnalyticsApp"),
+    Test / fork := true,
+    Test / javaOptions ++= Seq(
+      "--add-opens=java.base/sun.nio.ch=ALL-UNNAMED"
+    ),
+    libraryDependencies ++= Seq(
+      "org.apache.spark" %% "spark-sql"             % sparkVersion,
+      "org.apache.spark" %% "spark-sql-kafka-0-10"  % sparkVersion,
+      "io.circe"         %% "circe-core"            % circeVersion,
+      "io.circe"         %% "circe-parser"          % circeVersion,
+      "org.mongodb"       % "mongodb-driver-sync"   % mongoDriverVersion,
+      "org.mongodb.spark" %% "mongo-spark-connector" % mongoSparkConnectorVersion,
+      "org.scalatest"    %% "scalatest"             % "3.2.19" % Test,
+    ),
+    coverageEnabled := false,
   )
 
 // ── Benchmark module ──────────────────────────────────────────

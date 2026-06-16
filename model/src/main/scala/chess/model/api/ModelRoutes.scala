@@ -329,4 +329,8 @@ object ModelRoutes:
   }
 
   def routesResource: Resource[IO, HttpRoutes[IO]] =
-    EmberClientBuilder.default[IO].build.map(client => routesWith(new HttpEngineProxy(client)))
+    sys.env.getOrElse("ENGINE_TRANSPORT", "http").toLowerCase match
+      case "kafka" =>
+        KafkaEngineProxy.resource.map(routesWith)
+      case _ =>
+        EmberClientBuilder.default[IO].build.map(client => routesWith(new HttpEngineProxy(client)))

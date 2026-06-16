@@ -14,12 +14,18 @@ import org.http4s.server.middleware.CORS
 import io.circe.*
 import io.circe.syntax.*
 import chess.model.*
-import chess.model.dao.{SlickGameDao, MongoGameDao}
-import chess.controller.{Controller, ControllerStreamBridge, GameRegistry}
+import chess.model.dao.{GameRecordMapper, MongoAnalyticsSummaryDao, MongoGameDao, SlickGameDao}
+import chess.controller.{Controller, ControllerStreamBridge, GameRegistry, KafkaAiCoordinator}
+import chess.controller.persistence.{KafkaGamePersistencePublisher, KafkaPublishingGameRepository}
 import chess.streaming.ChessStreamApp
+import chess.tournament.api.TournamentRoutes
+import chess.tournament.client.TournamentApiClient
+import chess.tournament.config.TournamentConfig
+import chess.tournament.model.BotStatus
 import chess.util.Observer
 import org.apache.pekko.actor.typed.ActorSystem
 import org.apache.pekko.actor.typed.scaladsl.Behaviors
+import scala.concurrent.duration.Duration
 
 object ControllerServer extends IOApp:
 
@@ -45,8 +51,14 @@ object ControllerServer extends IOApp:
   )
 
   // ── Dependency Injection: DB via DB_TYPE Env-Variable ─────────
-  private def makeRepository: Resource[IO, GameRepository] =
-    sys.env.getOrElse("DB_TYPE", "memory") match
+  private def selectedDbType: String =
+    sys.env.getOrElse("DB_TYPE", "mongo").trim.toLowerCase
+
+  private def selectedPersistenceTransport: String =
+    sys.env.getOrElse("PERSISTENCE_TRANSPORT", "kafka").trim.toLowerCase
+
+  private def directRepository(dbType: String): Resource[IO, GameRepository] =
+    dbType match
       case "postgres" =>
         val url  = sys.env.getOrElse("DB_URL",      "jdbc:postgresql://localhost:5432/chess")
         val user = sys.env.getOrElse("DB_USER",     "chess")
@@ -59,11 +71,49 @@ object ControllerServer extends IOApp:
       case _ =>
         Resource.pure[IO, GameRepository](InMemoryGameRepository())
 
+  private def loadInitialRecords(dbType: String): IO[Vector[GameRecord]] =
+    dbType match
+      case "postgres" =>
+        val url  = sys.env.getOrElse("DB_URL",      "jdbc:postgresql://localhost:5432/chess")
+        val user = sys.env.getOrElse("DB_USER",     "chess")
+        val pass = sys.env.getOrElse("DB_PASSWORD", "chess")
+        SlickGameDao.resource(url, user, pass).use { dao =>
+          dao.findAll().map(_.flatMap(GameRecordMapper.fromRow))
+        }
+      case "mongo" =>
+        val uri    = sys.env.getOrElse("MONGO_URI", "mongodb://localhost:27017")
+        val dbName = sys.env.getOrElse("MONGO_DB",  "chess")
+        MongoGameDao.resource(uri, dbName).use { dao =>
+          dao.findAll().map(_.flatMap(GameRecordMapper.fromRow))
+        }
+      case _ =>
+        IO.pure(Vector.empty)
+
+  private def makeRepository: Resource[IO, GameRepository] =
+    val dbType = selectedDbType
+    selectedPersistenceTransport match
+      case "kafka" =>
+        for
+          initialRecords <- Resource.eval(loadInitialRecords(dbType))
+          publisher      <- KafkaGamePersistencePublisher.resourceFromEnv()
+        yield KafkaPublishingGameRepository(InMemoryGameRepository(initialRecords), publisher)
+      case _ =>
+        directRepository(dbType)
+
+  // Analytics summary is always read from Mongo, independent of DB_TYPE, because
+  // the Spark analytics service persists its results to Mongo regardless of the
+  // primary game store.
+  private def analyticsDaoResource: Resource[IO, MongoAnalyticsSummaryDao] =
+    val uri    = sys.env.getOrElse("MONGO_URI", "mongodb://localhost:27017")
+    val dbName = sys.env.getOrElse("MONGO_DB",  "chess")
+    MongoAnalyticsSummaryDao.resource(uri, dbName)
+
   override def run(args: List[String]): IO[ExitCode] =
     val port = sys.env.getOrElse("PORT", "8081").toInt
 
     makeRepository.use { repo =>
-      EmberClientBuilder.default[IO].build.use { httpClient =>
+      EmberClientBuilder.default[IO].withTimeout(Duration.Inf).build.use { httpClient =>
+       analyticsDaoResource.use { analyticsDao =>
         for
           ctrl        <- IO(Controller(repo))
           pekkoSystem <- IO(ActorSystem[Nothing](Behaviors.empty, "chess-stream"))
@@ -90,13 +140,34 @@ object ControllerServer extends IOApp:
 
           gameRegistry <- GameRegistry.make(repo)
           playerClient  = PlayerServiceClient(httpClient)
+          aiCoordinator <- IO(KafkaAiCoordinator(gameRegistry, playerClient.finishSession)(using pekkoSystem))
+          tournamentCfg = TournamentConfig.fromEnv()
+          tournamentBaseUri <- IO.fromEither(
+            Uri.fromString(tournamentCfg.serverUrl)
+              .left
+              .map(e => new IllegalArgumentException(s"Invalid TOURNAMENT_SERVER_URL: ${e.getMessage}"))
+          )
+          tournamentDirectorClient = TournamentApiClient(httpClient, tournamentBaseUri)
+          tournamentBotClient      = TournamentApiClient(httpClient, tournamentBaseUri)
+          tournamentStatusRef     <- Ref.of[IO, BotStatus](BotStatus.Idle)
+          tournamentLogQueue      <- Queue.circularBuffer[IO, String](500)
 
           legacyRoutes = ControllerRoutes(ctrl, sseQueues)
-          multiRoutes  = MultiGameRoutes(gameRegistry, playerClient)
-          combined     = legacyRoutes <+> multiRoutes
+          multiRoutes  = MultiGameRoutes(gameRegistry, playerClient, aiCoordinator)
+          tournamentRoutes = TournamentRoutes(
+            tournamentCfg,
+            tournamentDirectorClient,
+            tournamentBotClient,
+            tournamentStatusRef,
+            tournamentLogQueue,
+          )
+          analyticsRoutes = AnalyticsRoutes(analyticsDao)
+          combined     = legacyRoutes <+> multiRoutes <+> tournamentRoutes <+> analyticsRoutes
           app          = CORS.policy.withAllowOriginAll(jsonAppWithNotFound(combined))
 
-          _ <- IO.println(s"Controller-Service starting on port $port (DB_TYPE=${sys.env.getOrElse("DB_TYPE", "memory")}) ...")
+          _ <- IO.println(
+            s"Controller-Service starting on port $port (DB_TYPE=$selectedDbType, PERSISTENCE_TRANSPORT=$selectedPersistenceTransport, tournament=${tournamentCfg.serverUrl}) ..."
+          )
           _ <- EmberServerBuilder
             .default[IO]
             .withHost(host"0.0.0.0")
@@ -105,5 +176,6 @@ object ControllerServer extends IOApp:
             .build
             .useForever
         yield ExitCode.Success
+       }
       }
     }
