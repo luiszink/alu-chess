@@ -9,10 +9,10 @@ import scala.util.matching.Regex
   * per-field parsing to the shared logic utilities. */
 object RegexFenParser extends FenParser:
 
-  private val boardPat     = "[KQRBNPkqrbnp1-8/]+"
-  private val colorPat     = "(w|b)"
-  private val castlingPat  = "([KQkq]+|-)"
-  private val epPat        = "([a-h][36]|-)"
+  private val boardPat     = "\\S+"
+  private val colorPat     = "(\\S+)"
+  private val castlingPat  = "(\\S+)"
+  private val epPat        = "(\\S+)"
   private val clkPat       = "(\\d+)"
 
   private val Full6Re: Regex =
