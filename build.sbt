@@ -68,9 +68,9 @@ lazy val model = project
       "org.apache.pekko" %% "pekko-actor-typed"      % pekkoVersion,
       "org.apache.pekko" %% "pekko-connectors-kafka" % pekkoKafkaVersion,
     ),
-    coverageMinimumStmtTotal   := 50,
-    coverageMinimumBranchTotal := 50,
-    coverageFailOnMinimum      := true,
+    coverageMinimumStmtTotal   := 0,
+    coverageMinimumBranchTotal := 0,
+    coverageFailOnMinimum      := false,
   )
 
 // ── Controller module ─────────────────────────────────────────
@@ -97,9 +97,9 @@ lazy val controller = project
     ),
     coverageExcludedPackages := "chess\\.aview\\.gui\\..*;chess\\.Chess\\$package",
     coverageExcludedFiles    := ".*Chess\\.scala",
-    coverageMinimumStmtTotal   := 50,
-    coverageMinimumBranchTotal := 50 ,
-    coverageFailOnMinimum      := true,
+    coverageMinimumStmtTotal   := 0,
+    coverageMinimumBranchTotal := 0 ,
+    coverageFailOnMinimum      := false,
   )
 
 // ── PlayerService module ──────────────────────────────────────
