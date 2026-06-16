@@ -1,0 +1,63 @@
+{{- if .Values.aiworker.enabled }}
+# Kafka AI worker (docker-compose: "kafka-scala-worker").
+# Konsumiert chess-ai-requests, berechnet KI-Zuege (in-process ChessAI),
+# publiziert chess-ai-responses. Zusaetzlich Persistence-Consumer.
+# Reiner Worker -> kein Service, keine HTTP-Probes.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: aiworker
+  namespace: {{ include "alu-chess.namespace" . }}
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: aiworker
+  template:
+    metadata:
+      labels:
+        app: aiworker
+    spec:
+{{- with .Values.imagePullSecrets }}
+      imagePullSecrets:
+{{ toYaml . | indent 8 }}
+{{- end }}
+      containers:
+        - name: aiworker
+          image: "{{ .Values.aiworker.image.repository }}:{{ .Values.aiworker.image.tag }}"
+          imagePullPolicy: {{ .Values.aiworker.image.pullPolicy }}
+          env:
+            - name: KAFKA_BOOTSTRAP_SERVERS
+              value: {{ .Values.kafka.bootstrapServers | quote }}
+            - name: KAFKA_TOPIC_AI_REQUESTS
+              value: "chess-ai-requests"
+            - name: KAFKA_TOPIC_AI_RESPONSES
+              value: "chess-ai-responses"
+            - name: KAFKA_AI_WORKER_GROUP_ID
+              value: "alu-chess-ai-workers"
+            - name: KAFKA_TOPIC_GAME_PERSISTENCE
+              value: "game-persistence-requests"
+            - name: KAFKA_PERSISTENCE_WORKER_GROUP_ID
+              value: "alu-chess-persistence-workers"
+            - name: KAFKA_PERSISTENCE_CONSUMER_ENABLED
+              value: "true"
+            - name: PERSISTENCE_TRANSPORT
+              value: "kafka"
+            - name: DB_TYPE
+              value: "mongo"
+            - name: MONGO_DB
+              value: "chess"
+            - name: MONGO_URI
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.secretName }}
+                  key: MONGO_URI
+            - name: AI_TIME_LIMIT_MS
+              value: {{ .Values.aiworker.aiTimeLimitMs | quote }}
+            - name: AI_MAX_DEPTH
+              value: {{ .Values.aiworker.aiMaxDepth | quote }}
+            - name: JAVA_TOOL_OPTIONS
+              value: "-XX:MaxRAMPercentage=75.0"
+          resources:
+{{ toYaml .Values.aiworker.resources | indent 12 }}
+{{- end }}

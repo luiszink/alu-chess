@@ -24,6 +24,46 @@ mongo:
       cpu: "1"
       memory: 1Gi
 
+# Kafka-Broker (Single-Node KRaft). Notwendig fuer KI-Zuege im
+# Multi-Game-/Zeitformat-Pfad und fuer Kafka-basierte Persistence.
+kafka:
+  enabled: true
+  bootstrapServers: "kafka:9092"
+  clusterId: "MkU3OEVBNTcwNTJENDM2Qk"
+  image:
+    repository: confluentinc/cp-kafka
+    tag: "7.6.0"
+    pullPolicy: IfNotPresent
+  service:
+    port: 9092
+  storage:
+    size: 5Gi
+  resources:
+    requests:
+      cpu: 250m
+      memory: 512Mi
+    limits:
+      cpu: "1"
+      memory: 1536Mi
+
+# Kafka AI worker (docker-compose: "kafka-scala-worker").
+# Image ist privat auf ghcr.io -> erst nach Deploy-Workflow + Public-Schaltung ziehbar.
+aiworker:
+  enabled: true
+  aiTimeLimitMs: 2000
+  aiMaxDepth: 4
+  image:
+    repository: ghcr.io/luiszink/alu-chess/aiworker
+    tag: latest
+    pullPolicy: IfNotPresent
+  resources:
+    requests:
+      cpu: 250m
+      memory: 512Mi
+    limits:
+      cpu: "1"
+      memory: 1Gi
+
 services:
   stockfish:
     enabled: true
@@ -139,6 +179,19 @@ services:
             key: MONGO_URI
       - name: PLAYER_SERVICE_URL
         value: "http://playerservice:8083"
+      # Kafka: KI-Zuege (Multi-Game/Zeitformat) + Persistence laufen ueber den aiworker
+      - name: KAFKA_BOOTSTRAP_SERVERS
+        value: "kafka:9092"
+      - name: KAFKA_TOPIC_AI_REQUESTS
+        value: "chess-ai-requests"
+      - name: KAFKA_TOPIC_AI_RESPONSES
+        value: "chess-ai-responses"
+      - name: KAFKA_TOPIC_GAME_PERSISTENCE
+        value: "game-persistence-requests"
+      - name: AI_TIME_LIMIT_MS
+        value: "2000"
+      - name: AI_MAX_DEPTH
+        value: "4"
       - name: JAVA_TOOL_OPTIONS
         value: "-XX:MaxRAMPercentage=75.0"
     readinessProbe:
