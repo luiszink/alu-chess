@@ -104,6 +104,57 @@ jobs:
           cache-from: type=gha,scope=lichess
           cache-to: type=gha,scope=lichess,mode=max
 
+      # ── Kafka AI worker (docker-compose: "kafka-scala-worker") ──────
+      # Verarbeitet chess-ai-requests -> chess-ai-responses und ist die
+      # Persistence-Consumer-Komponente. Notwendig fuer KI-Zuege im
+      # Multi-Game-/Zeitformat-Pfad (KafkaAiCoordinator).
+      - name: Build and push aiworker
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          file: Dockerfile.aiworker
+          push: true
+          tags: |
+            ${{ env.IMAGE_PREFIX }}/aiworker:${{ env.IMAGE_TAG }}
+            ${{ env.IMAGE_PREFIX }}/aiworker:latest
+          cache-from: type=gha,scope=aiworker
+          cache-to: type=gha,scope=aiworker,mode=max
+
+      # ── Spark Analytics ────────────────────────────────────────────
+      - name: Build and push spark-analytics
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          file: Dockerfile.sparkanalytics
+          push: true
+          tags: |
+            ${{ env.IMAGE_PREFIX }}/spark-analytics:${{ env.IMAGE_TAG }}
+            ${{ env.IMAGE_PREFIX }}/spark-analytics:latest
+          cache-from: type=gha,scope=spark-analytics
+          cache-to: type=gha,scope=spark-analytics,mode=max
+
+      # ── Paket-Sichtbarkeit auf public setzen ───────────────────────
+      # Neue ghcr.io-Pakete sind standardmaessig privat. Damit k3d/k3s sie
+      # ohne imagePullSecret ziehen kann, werden sie auf "public" gesetzt.
+      # Best-effort: GITHUB_TOKEN kann je nach Account-Einstellung die
+      # Sichtbarkeit evtl. nicht aendern -> dann einmalig manuell unter
+      # github.com/users/luiszink/packages -> Package -> Settings -> Change visibility.
+      - name: Make packages public
+        continue-on-error: true
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          for pkg in aiworker spark-analytics lichess; do
+            echo "Setze ghcr.io/luiszink/alu-chess/${pkg} auf public ..."
+            gh api \
+              --method PATCH \
+              -H "Accept: application/vnd.github+json" \
+              "/user/packages/container/alu-chess%2F${pkg}/visibility" \
+              -f visibility='public' \
+              && echo "  -> public" \
+              || echo "  -> konnte Sichtbarkeit nicht setzen (manuell pruefen)"
+          done
+
       - name: Refresh GitOps branch
         run: |
           git fetch origin main
@@ -111,7 +162,7 @@ jobs:
 
       - name: Update backend image tags for Argo CD
         run: |
-          for service in stockfish model playerservice controller lichess; do
+          for service in stockfish model playerservice controller lichess aiworker spark-analytics; do
             sed -i "/^  ${service}:$/,/^  [a-z]/ s/tag: .*/tag: ${IMAGE_TAG}/" "${VALUES_FILE}"
           done
 
