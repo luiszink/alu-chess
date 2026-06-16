@@ -45,20 +45,16 @@ spec:
                 secretKeyRef:
                   name: {{ .Values.secretName }}
                   key: MONGO_PASSWORD
+          # TCP-Probe statt mongosh/mongo-Shell: versionsunabhaengig
+          # (mongo:7 hat nur mongosh, mongo:4.4 nur die legacy mongo-Shell).
           readinessProbe:
-            exec:
-              command:
-                - /bin/sh
-                - -c
-                - mongosh --quiet -u "$MONGO_INITDB_ROOT_USERNAME" -p "$MONGO_INITDB_ROOT_PASSWORD" --authenticationDatabase admin --eval "db.adminCommand('ping')"
+            tcpSocket:
+              port: {{ .Values.mongo.service.port }}
             initialDelaySeconds: 15
             periodSeconds: 10
           livenessProbe:
-            exec:
-              command:
-                - /bin/sh
-                - -c
-                - mongosh --quiet -u "$MONGO_INITDB_ROOT_USERNAME" -p "$MONGO_INITDB_ROOT_PASSWORD" --authenticationDatabase admin --eval "db.adminCommand('ping')"
+            tcpSocket:
+              port: {{ .Values.mongo.service.port }}
             initialDelaySeconds: 45
             periodSeconds: 20
           resources:
