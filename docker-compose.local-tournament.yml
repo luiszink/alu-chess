@@ -1,0 +1,60 @@
+# ── Lokaler Tournament-Server (Entwicklungs-Override) ──────────────────────
+#
+# Startet den tournament-server + 2 RandomBots die legale Zufallszüge spielen.
+# So können Turniere vollständig durchgespielt werden ohne andere Teams.
+#
+# VERWENDUNG:
+#   docker compose -f docker-compose.yml -f docker-compose.local-tournament.yml up -d --build
+#
+# Beim ersten Mal dauert der Build 5-10 Min (SBT kompiliert tournament JAR).
+# Danach ist das Image gecacht und startet schnell.
+#
+# LOGS anschauen:
+#   docker compose -f docker-compose.yml -f docker-compose.local-tournament.yml logs -f randombot-1 randombot-2
+#
+# ────────────────────────────────────────────────────────────────────────────
+
+services:
+
+  tournament-server:
+    build:
+      context: ${TOURNAMENT_SERVER_CONTEXT:-../tournament-server}
+      dockerfile: Dockerfile
+    ports:
+      - "8086:8080"
+    environment:
+      PORT: "8080"
+      TOURNAMENT_JWT_SECRET: ${TOURNAMENT_JWT_SECRET:-local-dev-secret-change-in-prod}
+      # Disable auto-fill — RandomBots joinen selbst
+      TOURNAMENT_AUTO_FILL_BOTS: 0
+
+  # RandomBots spielen legale Zufallszüge und joinen automatisch offene Tournaments
+  randombot-1:
+    build:
+      context: .
+      dockerfile: Dockerfile.randombot
+    environment:
+      TOURNAMENT_SERVER_URL: http://tournament-server:8080
+      AUTO_JOIN_BOT_NAME: RandomBot-Alice
+    depends_on:
+      tournament-server:
+        condition: service_started
+
+  randombot-2:
+    build:
+      context: .
+      dockerfile: Dockerfile.randombot
+    environment:
+      TOURNAMENT_SERVER_URL: http://tournament-server:8080
+      AUTO_JOIN_BOT_NAME: RandomBot-Bob
+    depends_on:
+      tournament-server:
+        condition: service_started
+
+  # Controller bekommt die lokale URL überschrieben
+  controller:
+    environment:
+      TOURNAMENT_SERVER_URL: http://tournament-server:8080
+    depends_on:
+      tournament-server:
+        condition: service_started

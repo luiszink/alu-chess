@@ -1,0 +1,21 @@
+FROM sbtscala/scala-sbt:eclipse-temurin-alpine-25.0.1_8_1.12.9_3.3.7 AS build
+
+WORKDIR /build
+COPY build.sbt .
+COPY project/ project/
+RUN sbt update
+
+COPY . .
+RUN sbt tournament/assembly
+
+FROM eclipse-temurin:21-jre-alpine
+
+RUN apk add --no-cache curl
+
+COPY --from=build /build/tournament/target/scala-3.6.4/alu-chess-tournament-assembly-0.1.0-SNAPSHOT.jar /app/tournament.jar
+
+WORKDIR /app
+
+ENV TOURNAMENT_SERVER_URL=http://tournament-server:8080
+
+ENTRYPOINT ["java", "-cp", "tournament.jar", "chess.tournament.bot.RandomBotMain"]

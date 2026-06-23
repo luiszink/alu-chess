@@ -108,6 +108,11 @@ final class TournamentApiClient(
     val req = authed(Request[IO](POST, baseUri / "api" / "tournament" / id / "withdraw"))
     rawString(req).void
 
+  def addParticipant(tournamentId: String, botId: String): IO[Unit] =
+    val body = Json.obj("botId" -> Json.fromString(botId))
+    val req = authed(Request[IO](POST, baseUri / "api" / "tournament" / tournamentId / "participants").withEntity(body))
+    rawString(req).void
+
   def roundPairings(id: String, round: Int): IO[Json] =
     val req = Request[IO](GET, baseUri / "api" / "tournament" / id / "round" / round.toString)
     rawString(req).flatMap(parseJson)
@@ -149,6 +154,15 @@ final class TournamentApiClient(
     val req = Request[IO](GET, baseUri / "api" / "tournament" / tournamentId / "export" / "games")
       .putHeaders(Header.Raw(ci"Accept", accept))
     rawString(req)
+
+  def analyticsExport(tournamentId: String): IO[AnalyticsExport] =
+    val req = Request[IO](GET, baseUri / "api" / "tournament" / tournamentId / "analytics-export")
+    rawString(req).flatMap(parse[AnalyticsExport])
+
+  /** Raw JSON proxy — used by the route to avoid re-serialisation. */
+  def getAnalyticsExport(tournamentId: String): IO[Json] =
+    val req = Request[IO](GET, baseUri / "api" / "tournament" / tournamentId / "analytics-export")
+    rawString(req).flatMap(parseJson)
 
   def streamTournamentRaw(tournamentId: String): fs2.Stream[IO, String] =
     val req = authed(Request[IO](GET, baseUri / "api" / "tournament" / tournamentId / "stream"))
