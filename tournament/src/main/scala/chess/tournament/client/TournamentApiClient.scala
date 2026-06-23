@@ -18,7 +18,7 @@ import org.typelevel.ci.CIStringSyntax
   * NDJSON streams ignore blank keep-alive lines automatically. */
 final class TournamentApiClient(
     client: Client[IO],
-    baseUri: Uri,
+    val baseUri: Uri,
 ):
 
   private var _token: String = ""
@@ -30,6 +30,13 @@ final class TournamentApiClient(
     if hasToken then req.putHeaders(auth) else req
 
   // ── Auth ────────────────────────────────────────────────────────────────
+
+  /** Passthrough: forward a raw register request body to the upstream server and return the raw JSON string. */
+  def registerRaw(body: String, contentType: String): IO[String] =
+    val req = Request[IO](POST, baseUri / "api" / "auth" / "register")
+      .withEntity(body)
+      .putHeaders(org.http4s.headers.`Content-Type`(MediaType.unsafeParse(contentType)))
+    rawString(req)
 
   /** Register a bot identity and store the JWT for subsequent requests. */
   def register(name: String, isBot: Boolean = true): IO[BotIdentity] =
