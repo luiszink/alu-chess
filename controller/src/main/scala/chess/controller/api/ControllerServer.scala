@@ -163,7 +163,18 @@ object ControllerServer extends IOApp:
           )
           analyticsRoutes = AnalyticsRoutes(analyticsDao)
           combined     = legacyRoutes <+> multiRoutes <+> tournamentRoutes <+> analyticsRoutes
-          app          = CORS.policy.withAllowOriginAll(jsonAppWithNotFound(combined))
+          // Normalise a single trailing slash (except "/") before routing, so that
+          // calls the frontend is forced to make with a trailing slash — e.g.
+          // POST/GET /api/tournament/ (nginx `location /api/tournament/`) — still
+          // match the collection routes registered without one.
+          normalized   = HttpRoutes[IO] { req =>
+            val p = req.uri.path
+            if p.endsWithSlash && p.renderString != "/" then
+              combined.run(req.withUri(req.uri.withPath(p.dropEndsWithSlash)))
+            else
+              combined.run(req)
+          }
+          app          = CORS.policy.withAllowOriginAll(jsonAppWithNotFound(normalized))
 
           _ <- IO.println(
             s"Controller-Service starting on port $port (DB_TYPE=$selectedDbType, PERSISTENCE_TRANSPORT=$selectedPersistenceTransport, tournament=${tournamentCfg.serverUrl}) ..."
