@@ -4,19 +4,19 @@ imagePullSecrets:
 services:
   stockfish:
     image:
-      tag: sha-b969b8ab1e91471ea7b37d4e9cec5d7fd455d8d2
+      tag: sha-8b203a40f12941c5e086a5f1a70480d84af45ea9
   model:
     image:
-      tag: sha-b969b8ab1e91471ea7b37d4e9cec5d7fd455d8d2
+      tag: sha-8b203a40f12941c5e086a5f1a70480d84af45ea9
   playerservice:
     image:
-      tag: sha-b969b8ab1e91471ea7b37d4e9cec5d7fd455d8d2
+      tag: sha-8b203a40f12941c5e086a5f1a70480d84af45ea9
   controller:
     image:
-      tag: sha-b969b8ab1e91471ea7b37d4e9cec5d7fd455d8d2
+      tag: sha-8b203a40f12941c5e086a5f1a70480d84af45ea9
   lichess:
     image:
-      tag: sha-b969b8ab1e91471ea7b37d4e9cec5d7fd455d8d2
+      tag: sha-8b203a40f12941c5e086a5f1a70480d84af45ea9
   frontend:
     image:
       repository: ghcr.io/luiszink/alu-chess-web
