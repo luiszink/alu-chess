@@ -20,4 +20,4 @@ services:
   frontend:
     image:
       repository: ghcr.io/luiszink/alu-chess-web
-      tag: sha-6f0215c4d1fac3c58cfad2f4a5dd7d5eb39d1532
+      tag: sha-89bbccd200db1c41482bf100e743021c3fc201dd
