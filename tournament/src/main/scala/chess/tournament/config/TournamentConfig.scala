@@ -18,7 +18,7 @@ object TournamentConfig:
       env(key).flatMap(_.toLongOption).getOrElse(default)
 
     TournamentConfig(
-      serverUrl     = env("TOURNAMENT_SERVER_URL").getOrElse("https://tournament.staging.maichess.berger-software.com"),
+      serverUrl     = env("TOURNAMENT_SERVER_URL").getOrElse("http://141.37.123.132:8086/"),
       botName       = env("TOURNAMENT_BOT_NAME").getOrElse("alu-chess-bot"),
       directorName  = env("TOURNAMENT_DIRECTOR_NAME").getOrElse("alu-chess-director"),
       aiTimeLimitMs = envLong("AI_TIME_LIMIT_MS", 2000L),
