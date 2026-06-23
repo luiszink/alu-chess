@@ -151,6 +151,10 @@ object ControllerServer extends IOApp:
           tournamentBotClient      = TournamentApiClient(httpClient, tournamentBaseUri)
           tournamentStatusRef     <- Ref.of[IO, BotStatus](BotStatus.Idle)
           tournamentLogQueue      <- Queue.circularBuffer[IO, String](500)
+          // Warm-up: register director eagerly so the first UI request doesn't timeout
+          _ <- tournamentDirectorClient
+                 .register(tournamentCfg.directorName, isBot = false)
+                 .handleErrorWith(e => IO.println(s"[tournament] warm-up registration failed: ${e.getMessage}"))
 
           legacyRoutes = ControllerRoutes(ctrl, sseQueues)
           multiRoutes  = MultiGameRoutes(gameRegistry, playerClient, aiCoordinator)
