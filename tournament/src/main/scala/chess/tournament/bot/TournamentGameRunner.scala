@@ -4,7 +4,7 @@ import cats.effect.IO
 import cats.effect.std.AtomicCell
 import chess.tournament.client.TournamentApiClient
 import chess.tournament.model.GameEvent
-import chess.model.{Color, Game, Move}
+import chess.model.{Color, Fen, Game, Move}
 import chess.model.ai.ChessAI
 
 /** Plays a single tournament game from start to finish.
@@ -60,12 +60,12 @@ object TournamentGameRunner:
 
     case gs: GameEvent.GameState =>
       val moves = gs.moves.getOrElse("").trim
-      val game0 = Game.newGame
-      buildGame(game0, moves.split(" ").filter(_.nonEmpty).toList) match
+      val ucis  = moves.split(" ").filter(_.nonEmpty).toList
+      gameFromSnapshot(gs, ucis) match
         case Left(err) =>
           onEvent(s"[game $gameId] could not build initial state: $err")
         case Right(game) =>
-          val applied = moves.split(" ").count(_.nonEmpty)
+          val applied = ucis.size
           // pending = created but not yet active; treat like ongoing (wait for moves)
           val isFinished = gs.status.exists(s => s != "ongoing" && s != "pending")
           val ctx = Ctx(myColor, game, applied, isFinished)
@@ -124,6 +124,17 @@ object TournamentGameRunner:
     ucis.foldLeft[Either[String, Game]](Right(start)) { (acc, uci) =>
       acc.flatMap(g => applyUci(g, uci))
     }
+
+  private def gameFromSnapshot(gs: GameEvent.GameState, ucis: List[String]): Either[String, Game] =
+    gs.fen.map(_.trim).filter(_.nonEmpty) match
+      case Some(currentFen) =>
+        Fen.parseE(currentFen).left.map(_.message)
+      case None =>
+        val start =
+          gs.startPosition.map(_.trim).filter(s => s.nonEmpty && s != "standard") match
+            case Some(startFen) => Fen.parseE(startFen).left.map(_.message)
+            case None           => Right(Game.newGame)
+        start.flatMap(game => buildGame(game, ucis))
 
   private def applyUci(game: Game, uci: String): Either[String, Game] =
     Move.fromString(uci) match

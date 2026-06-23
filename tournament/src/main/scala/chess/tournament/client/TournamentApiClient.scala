@@ -8,7 +8,7 @@ import io.circe.syntax.*
 import org.http4s.*
 import org.http4s.Method.*
 import org.http4s.client.Client
-import org.http4s.headers.Authorization
+import org.http4s.headers.{Authorization, `Content-Type`}
 import org.http4s.circe.*
 import org.typelevel.ci.CIStringSyntax
 
@@ -28,6 +28,46 @@ final class TournamentApiClient(
   private def auth: Header.ToRaw = Authorization(Credentials.Token(AuthScheme.Bearer, _token))
   private def authed(req: Request[IO]): Request[IO] =
     if hasToken then req.putHeaders(auth) else req
+
+  private val forwardedRequestHeaders: Set[String] =
+    Set("authorization", "content-type", "accept")
+
+  private def endpoint(parts: String*): Uri =
+    parts.foldLeft(baseUri)((uri, part) => uri / part)
+
+  private def withForwardedHeaders(from: Request[IO], to: Request[IO]): Request[IO] =
+    val headers = from.headers.headers.filter(h => forwardedRequestHeaders.contains(h.name.toString.toLowerCase))
+    to.withHeaders(Headers(headers))
+
+  /** Forward a normal request to the upstream tournament server and preserve status/body/content-type.
+    *
+    * This is intentionally not used for long-lived NDJSON streams, because those
+    * must stay streaming instead of being buffered into memory.
+    */
+  def proxy(req: Request[IO], parts: String*): IO[Response[IO]] =
+    val upstreamUri = endpoint(parts*).copy(query = req.uri.query)
+    val upstreamReq =
+      withForwardedHeaders(req, Request[IO](req.method, upstreamUri).withBodyStream(req.body))
+
+    client.run(upstreamReq).use { resp =>
+      resp.body.through(fs2.text.utf8.decode).compile.string.map { body =>
+        val base = Response[IO](status = resp.status).withEntity(body)
+        resp.headers.get[`Content-Type`].fold(base)(ct => base.withContentType(ct))
+      }
+    }
+
+  def proxyStream(req: Request[IO], contentType: MediaType, parts: String*): IO[Response[IO]] =
+    val upstreamUri = endpoint(parts*).copy(query = req.uri.query)
+    val upstreamReq =
+      withForwardedHeaders(req, Request[IO](req.method, upstreamUri).withBodyStream(req.body))
+    client.run(upstreamReq).allocated.map { case (resp, release) =>
+      val base =
+        Response[IO](resp.status)
+          .withBodyStream(resp.body.onFinalize(release))
+      resp.headers
+        .get[`Content-Type`]
+        .fold(base.withContentType(`Content-Type`(contentType)))(ct => base.withContentType(ct))
+    }
 
   // ── Auth ────────────────────────────────────────────────────────────────
 
@@ -78,6 +118,10 @@ final class TournamentApiClient(
       startPosition: Option[String] = None,
       matchesPerPairing: Option[Int] = None,
       groupSize: Option[Int] = None,
+      opening: Option[String] = None,
+      bots: Option[String] = None,
+      maxConcurrentGames: Option[Int] = None,
+      openings: Option[String] = None,
   ): IO[Json] =
     val fields =
       List(
@@ -90,7 +134,11 @@ final class TournamentApiClient(
         rated.map(v => "rated" -> v.toString) ++
         startPosition.map(v => "startPosition" -> v) ++
         matchesPerPairing.map(v => "matchesPerPairing" -> v.toString) ++
-        groupSize.map(v => "groupSize" -> v.toString)
+        groupSize.map(v => "groupSize" -> v.toString) ++
+        opening.map(v => "opening" -> v) ++
+        bots.map(v => "bots" -> v) ++
+        maxConcurrentGames.map(v => "maxConcurrentGames" -> v.toString) ++
+        openings.map(v => "openings" -> v)
     val form = UrlForm(fields*)
     val req = authed(Request[IO](POST, baseUri / "api" / "tournament").withEntity(form))
     rawString(req).flatMap(parseJson)

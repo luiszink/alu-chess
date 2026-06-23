@@ -89,6 +89,7 @@ object GameEvent:
       fen: Option[String],
       status: Option[String],
       turn: Option[String],
+      startPosition: Option[String],
   ) extends GameEvent
 
   final case class Move(uci: String, fen: String, turn: String) extends GameEvent
@@ -105,7 +106,8 @@ object GameEvent:
           fen    <- c.get[Option[String]]("fen").orElse(Right(None))
           status <- c.get[Option[String]]("status").orElse(Right(None))
           turn   <- c.get[Option[String]]("turn").orElse(Right(None))
-        yield GameState(id, moves, fen, status, turn)
+          startPosition <- c.get[Option[String]]("startPosition").orElse(Right(None))
+        yield GameState(id, moves, fen, status, turn, startPosition)
       case "move" =>
         for
           uci  <- c.get[String]("uci")

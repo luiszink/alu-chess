@@ -27,6 +27,10 @@ private final case class CreateRequest(
     startPosition: Option[String] = None,
     matchesPerPairing: Option[Int] = None,
     groupSize: Option[Int] = None,
+    opening: Option[String] = None,
+    bots: Option[String] = None,
+    maxConcurrentGames: Option[Int] = None,
+    openings: Option[String] = None,
 ) derives Decoder
 
 object TournamentRoutes:
@@ -71,6 +75,10 @@ object TournamentRoutes:
         startPosition     = req.startPosition,
         matchesPerPairing = req.matchesPerPairing,
         groupSize         = req.groupSize,
+        opening           = req.opening,
+        bots              = req.bots,
+        maxConcurrentGames = req.maxConcurrentGames,
+        openings          = req.openings,
       )
 
     def createFromForm(form: UrlForm): Either[String, CreateRequest] =
@@ -92,6 +100,7 @@ object TournamentRoutes:
         clockIncrement    <- requiredInt("clockIncrement")
         matchesPerPairing <- optionalInt("matchesPerPairing")
         groupSize         <- optionalInt("groupSize")
+        maxConcurrentGames <- optionalInt("maxConcurrentGames")
         rated             <- optionalBoolean("rated")
       yield CreateRequest(
         name              = name,
@@ -103,6 +112,10 @@ object TournamentRoutes:
         startPosition     = value("startPosition"),
         matchesPerPairing = matchesPerPairing,
         groupSize         = groupSize,
+        opening           = value("opening"),
+        bots              = value("bots"),
+        maxConcurrentGames = maxConcurrentGames,
+        openings          = value("openings"),
       )
 
     def statusJson: IO[Json] =
@@ -151,10 +164,22 @@ object TournamentRoutes:
 
       // ── Auth passthrough → external tournament server ───────────────────────
       case req @ POST -> Root / "api" / "auth" / "register" =>
-        req.bodyText.compile.string
-          .flatMap(body => directorClient.registerRaw(body, "application/json"))
-          .flatMap(raw => Ok(raw).map(_.withContentType(`Content-Type`(MediaType.application.json))))
-          .handleErrorWith(upstreamError)
+        directorClient.proxy(req, "api", "auth", "register").handleErrorWith(upstreamError)
+
+      case req @ GET -> Root / "api" / "openings" =>
+        directorClient.proxy(req, "api", "openings").handleErrorWith(upstreamError)
+
+      case req @ POST -> Root / "api" / "openings" =>
+        directorClient.proxy(req, "api", "openings").handleErrorWith(upstreamError)
+
+      case req @ GET -> Root / "api" / "bots" =>
+        directorClient.proxy(req, "api", "bots").handleErrorWith(upstreamError)
+
+      case req @ POST -> Root / "api" / "bots" =>
+        directorClient.proxy(req, "api", "bots").handleErrorWith(upstreamError)
+
+      case req @ DELETE -> Root / "api" / "bots" / id =>
+        directorClient.proxy(req, "api", "bots", id).handleErrorWith(upstreamError)
 
       case GET -> Root / "api" / "tournament" / "ui" =>
         val loader = Thread.currentThread().getContextClassLoader
@@ -179,87 +204,65 @@ object TournamentRoutes:
       case GET -> Root / "api" / "tournament" / "list" =>
         listForUi.flatMap(Ok(_)).handleErrorWith(upstreamError)
 
-      case GET -> Root / "api" / "tournament" =>
-        listForUi.flatMap(Ok(_)).handleErrorWith(upstreamError)
+      case req @ GET -> Root / "api" / "tournament" =>
+        directorClient.proxy(req, "api", "tournament").handleErrorWith(upstreamError)
 
       case req @ POST -> Root / "api" / "tournament" / "create" =>
         req.as[CreateRequest].flatMap(create).flatMap(Ok(_)).handleErrorWith(upstreamError)
 
       case req @ POST -> Root / "api" / "tournament" =>
-        req.as[UrlForm].attempt.flatMap {
-          case Left(_) =>
-            BadRequest(Json.obj("error" -> Json.fromString("Expected application/x-www-form-urlencoded body")))
-          case Right(form) =>
-            createFromForm(form) match
-              case Left(msg)  => BadRequest(Json.obj("error" -> Json.fromString(msg)))
-              case Right(req) => create(req).flatMap(Created(_)).handleErrorWith(upstreamError)
-        }
+        directorClient.proxy(req, "api", "tournament").handleErrorWith(upstreamError)
 
       case GET -> Root / "api" / "tournament" / "info" / id =>
         directorClient.getTournament(id).flatMap(Ok(_)).handleErrorWith(upstreamError)
 
-      case GET -> Root / "api" / "tournament" / id =>
-        directorClient.getTournament(id).flatMap(Ok(_)).handleErrorWith(upstreamError)
+      case req @ GET -> Root / "api" / "tournament" / id =>
+        directorClient.proxy(req, "api", "tournament", id).handleErrorWith(upstreamError)
 
-      case DELETE -> Root / "api" / "tournament" / id =>
-        (ensureDirector *> directorClient.deleteTournament(id)).flatMap(_ => NoContent()).handleErrorWith(upstreamError)
+      case req @ DELETE -> Root / "api" / "tournament" / id =>
+        directorClient.proxy(req, "api", "tournament", id).handleErrorWith(upstreamError)
 
       case POST -> Root / "api" / "tournament" / "join" / id =>
         (ensureBot *> botClient.joinTournament(id)).flatMap(_ => Ok(Json.obj("ok" -> Json.fromBoolean(true)))).handleErrorWith(upstreamError)
 
-      case POST -> Root / "api" / "tournament" / id / "join" =>
-        (ensureBot *> botClient.joinTournament(id)).flatMap(_ => Ok(Json.obj("ok" -> Json.fromBoolean(true)))).handleErrorWith(upstreamError)
+      case req @ POST -> Root / "api" / "tournament" / id / "join" =>
+        directorClient.proxy(req, "api", "tournament", id, "join").handleErrorWith(upstreamError)
 
       case POST -> Root / "api" / "tournament" / "start" / id =>
         (ensureDirector *> directorClient.startTournament(id)).flatMap(Ok(_)).handleErrorWith(upstreamError)
 
-      case POST -> Root / "api" / "tournament" / id / "start" =>
-        (ensureDirector *> directorClient.startTournament(id)).flatMap(Ok(_)).handleErrorWith(upstreamError)
+      case req @ POST -> Root / "api" / "tournament" / id / "start" =>
+        directorClient.proxy(req, "api", "tournament", id, "start").handleErrorWith(upstreamError)
 
-      case POST -> Root / "api" / "tournament" / id / "withdraw" =>
-        (ensureBot *> botClient.withdrawTournament(id)).flatMap(_ => Ok(Json.obj("ok" -> Json.fromBoolean(true)))).handleErrorWith(upstreamError)
+      case req @ POST -> Root / "api" / "tournament" / id / "withdraw" =>
+        directorClient.proxy(req, "api", "tournament", id, "withdraw").handleErrorWith(upstreamError)
 
       case req @ POST -> Root / "api" / "tournament" / id / "participants" =>
-        req.as[Json].flatMap { body =>
-          body.hcursor.get[String]("botId") match
-            case Left(_) => BadRequest(Json.obj("error" -> Json.fromString("Missing 'botId'")))
-            case Right(botId) =>
-              (ensureDirector *> directorClient.addParticipant(id, botId))
-                .flatMap(_ => Ok(Json.obj("ok" -> Json.fromBoolean(true))))
-                .handleErrorWith(upstreamError)
-        }
+        directorClient.proxy(req, "api", "tournament", id, "participants").handleErrorWith(upstreamError)
 
-      case GET -> Root / "api" / "tournament" / id / "results" :? NbQueryParamMatcher(nb) =>
-        ndjson(directorClient.results(id, nb)).handleErrorWith(upstreamError)
+      case req @ GET -> Root / "api" / "tournament" / id / "results" :? NbQueryParamMatcher(_) =>
+        directorClient.proxyStream(req, ndjsonMedia, "api", "tournament", id, "results").handleErrorWith(upstreamError)
 
-      case GET -> Root / "api" / "tournament" / id / "round" / IntVar(round) =>
-        directorClient.roundPairings(id, round).flatMap(Ok(_)).handleErrorWith(upstreamError)
+      case req @ GET -> Root / "api" / "tournament" / id / "round" / IntVar(round) =>
+        directorClient.proxy(req, "api", "tournament", id, "round", round.toString).handleErrorWith(upstreamError)
 
       case req @ GET -> Root / "api" / "tournament" / id / "export" / "games" =>
-        val wantsNdjson =
-          req.headers.headers.exists(h =>
-            h.name.toString.equalsIgnoreCase("Accept") && h.value.contains("application/x-ndjson")
-          )
-        directorClient.exportGames(id, wantsNdjson)
-          .flatMap { body =>
-            Ok(body).map(_.withContentType(`Content-Type`(if wantsNdjson then ndjsonMedia else pgnMedia)))
-          }
-          .handleErrorWith(upstreamError)
+        directorClient.proxy(req, "api", "tournament", id, "export", "games").handleErrorWith(upstreamError)
 
-      case GET -> Root / "api" / "tournament" / id / "analytics-export" =>
-        directorClient.getAnalyticsExport(id).flatMap(Ok(_)).handleErrorWith(upstreamError)
+      case req @ GET -> Root / "api" / "tournament" / id / "analytics-export" =>
+        directorClient.proxy(req, "api", "tournament", id, "analytics-export").handleErrorWith(upstreamError)
 
-      case GET -> Root / "api" / "tournament" / id / "stream" =>
-        ensureBot *> ndjson(botClient.streamTournamentRaw(id)).handleErrorWith(upstreamError)
+      case req @ GET -> Root / "api" / "tournament" / id / "stream" =>
+        directorClient.proxyStream(req, ndjsonMedia, "api", "tournament", id, "stream").handleErrorWith(upstreamError)
 
-      case GET -> Root / "api" / "tournament" / id / "game" / gameId =>
-        directorClient.getGame(id, gameId).flatMap(Ok(_)).handleErrorWith(upstreamError)
+      case req @ GET -> Root / "api" / "tournament" / id / "game" / gameId =>
+        directorClient.proxy(req, "api", "tournament", id, "game", gameId).handleErrorWith(upstreamError)
 
-      case GET -> Root / "api" / "tournament" / id / "game" / gameId / "stream" =>
-        ensureBot *> ndjson(botClient.streamGameRaw(id, gameId)).handleErrorWith(upstreamError)
+      case req @ GET -> Root / "api" / "tournament" / id / "game" / gameId / "stream" =>
+        directorClient.proxyStream(req, ndjsonMedia, "api", "tournament", id, "game", gameId, "stream").handleErrorWith(upstreamError)
 
-      case POST -> Root / "api" / "tournament" / id / "game" / gameId / "move" / uci =>
-        (ensureBot *> botClient.submitMove(id, gameId, uci)).flatMap(_ => Ok(Json.obj("ok" -> Json.fromBoolean(true)))).handleErrorWith(upstreamError)
+      case req @ POST -> Root / "api" / "tournament" / id / "game" / gameId / "move" / uci =>
+        directorClient.proxy(req, "api", "tournament", id, "game", gameId, "move", uci).handleErrorWith(upstreamError)
 
       case POST -> Root / "api" / "tournament" / "connect" / id =>
         statusRef.get.flatMap {
