@@ -27,6 +27,9 @@ final case class TournamentInfo(
     nbPlayers: Option[Int],
     nbRounds: Option[Int],
     format: Option[String],
+    matchesPerPairing: Option[Int],
+    startPosition: Option[String],
+    rated: Option[Boolean],
     status: Option[String],
     createdBy: Option[String],
 )
@@ -56,6 +59,7 @@ object TournamentEvent:
   final case class GameStart(round: Int, gameId: String, color: String) extends TournamentEvent
   final case class RoundFinished(round: Int)                       extends TournamentEvent
   final case class TournamentFinished(winner: Option[Json])        extends TournamentEvent
+  final case class Heartbeat()                                     extends TournamentEvent
   final case class Unknown(raw: Json)                              extends TournamentEvent
 
   given Decoder[TournamentEvent] = Decoder.instance { c =>
@@ -70,6 +74,7 @@ object TournamentEvent:
         yield GameStart(round, gameId, color)
       case "roundFinished"      => c.get[Int]("round").map(RoundFinished(_))
       case "tournamentFinished" => Right(TournamentFinished(c.value.hcursor.get[Json]("winner").toOption))
+      case "heartbeat"          => Right(Heartbeat())
       case _                    => Right(Unknown(c.value))
     }
   }
@@ -88,6 +93,7 @@ object GameEvent:
 
   final case class Move(uci: String, fen: String, turn: String) extends GameEvent
   final case class GameEnd(winner: Option[String], status: String) extends GameEvent
+  final case class Heartbeat()                                    extends GameEvent
   final case class Unknown(raw: Json)                             extends GameEvent
 
   given Decoder[GameEvent] = Decoder.instance { c =>
@@ -111,9 +117,114 @@ object GameEvent:
           winner <- c.get[Option[String]]("winner").orElse(Right(None))
           status <- c.get[String]("status")
         yield GameEnd(winner, status)
-      case _ => Right(Unknown(c.value))
+      case "heartbeat" => Right(Heartbeat())
+      case _           => Right(Unknown(c.value))
     }
   }
+
+// ── Results & Pairings ───────────────────────────────────────────────────────
+
+final case class BotRef(id: String, name: String)
+object BotRef:
+  given Decoder[BotRef] = deriveDecoder
+
+final case class Result(
+    rank: Int,
+    points: Double,
+    tieBreak: Option[Double],
+    bot: BotRef,
+    nbGames: Option[Int],
+    wins: Option[Int],
+    draws: Option[Int],
+    losses: Option[Int],
+)
+object Result:
+  given Decoder[Result] = deriveDecoder
+
+final case class MatchResultEntry(gameId: String, winner: Option[String])
+object MatchResultEntry:
+  given Decoder[MatchResultEntry] = deriveDecoder
+
+final case class Pairing(
+    round: Int,
+    white: BotRef,
+    black: BotRef,
+    gameId: Option[String],
+    matchesPerPairing: Option[Int],
+    matchResults: Option[List[MatchResultEntry]],
+    winner: Option[String],
+)
+object Pairing:
+  given Decoder[Pairing] = deriveDecoder
+
+// ── Analytics Export ──────────────────────────────────────────────────────────
+
+final case class AnalyticsExportGame(
+    gameId: String,
+    tournamentId: String,
+    round: Int,
+    whiteBotId: String,
+    whiteBotName: String,
+    whiteBotFamily: Option[String],
+    whiteStrategyType: Option[String],
+    whiteEngineType: Option[String],
+    whiteModelVersion: Option[String],
+    blackBotId: String,
+    blackBotName: String,
+    blackBotFamily: Option[String],
+    blackStrategyType: Option[String],
+    blackEngineType: Option[String],
+    blackModelVersion: Option[String],
+    winner: Option[String],
+    winnerBotId: Option[String],
+    terminationReason: String,
+    totalPly: Int,
+    moves: String,
+    startedAt: Option[String],
+    endedAt: Option[String],
+    durationMillis: Option[Long],
+)
+object AnalyticsExportGame:
+  given Decoder[AnalyticsExportGame] = deriveDecoder
+
+final case class AnalyticsExportStanding(
+    tournamentId: String,
+    botId: String,
+    botName: String,
+    botFamily: Option[String],
+    strategyType: Option[String],
+    engineType: Option[String],
+    modelVersion: Option[String],
+    rank: Int,
+    points: Double,
+    wins: Int,
+    draws: Int,
+    losses: Int,
+    nbGames: Int,
+    tieBreak: Double,
+)
+object AnalyticsExportStanding:
+  given Decoder[AnalyticsExportStanding] = deriveDecoder
+
+final case class AnalyticsExportClock(limit: Int, increment: Int)
+object AnalyticsExportClock:
+  given Decoder[AnalyticsExportClock] = deriveDecoder
+
+final case class AnalyticsExport(
+    schemaVersion: String,
+    tournamentId: String,
+    format: String,
+    clock: AnalyticsExportClock,
+    rated: Boolean,
+    nbRounds: Int,
+    startedAt: Option[String],
+    finishedAt: Option[String],
+    exportedAt: String,
+    standings: List[AnalyticsExportStanding],
+    games: List[AnalyticsExportGame],
+)
+object AnalyticsExport:
+  given Decoder[AnalyticsExport] = deriveDecoder
 
 // ── Bot state (internal) ──────────────────────────────────────────────────────
 

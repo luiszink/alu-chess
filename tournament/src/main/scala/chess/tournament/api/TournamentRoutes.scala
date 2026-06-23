@@ -149,6 +149,13 @@ object TournamentRoutes:
 
     HttpRoutes.of[IO] {
 
+      // ── Auth passthrough → external tournament server ───────────────────────
+      case req @ POST -> Root / "api" / "auth" / "register" =>
+        req.bodyText.compile.string
+          .flatMap(body => directorClient.registerRaw(body, "application/json"))
+          .flatMap(raw => Ok(raw).map(_.withContentType(`Content-Type`(MediaType.application.json))))
+          .handleErrorWith(upstreamError)
+
       case GET -> Root / "api" / "tournament" / "ui" =>
         val loader = Thread.currentThread().getContextClassLoader
         Option(loader.getResourceAsStream("tournament-ui.html")) match
@@ -212,6 +219,16 @@ object TournamentRoutes:
       case POST -> Root / "api" / "tournament" / id / "withdraw" =>
         (ensureBot *> botClient.withdrawTournament(id)).flatMap(_ => Ok(Json.obj("ok" -> Json.fromBoolean(true)))).handleErrorWith(upstreamError)
 
+      case req @ POST -> Root / "api" / "tournament" / id / "participants" =>
+        req.as[Json].flatMap { body =>
+          body.hcursor.get[String]("botId") match
+            case Left(_) => BadRequest(Json.obj("error" -> Json.fromString("Missing 'botId'")))
+            case Right(botId) =>
+              (ensureDirector *> directorClient.addParticipant(id, botId))
+                .flatMap(_ => Ok(Json.obj("ok" -> Json.fromBoolean(true))))
+                .handleErrorWith(upstreamError)
+        }
+
       case GET -> Root / "api" / "tournament" / id / "results" :? NbQueryParamMatcher(nb) =>
         ndjson(directorClient.results(id, nb)).handleErrorWith(upstreamError)
 
@@ -228,6 +245,9 @@ object TournamentRoutes:
             Ok(body).map(_.withContentType(`Content-Type`(if wantsNdjson then ndjsonMedia else pgnMedia)))
           }
           .handleErrorWith(upstreamError)
+
+      case GET -> Root / "api" / "tournament" / id / "analytics-export" =>
+        directorClient.getAnalyticsExport(id).flatMap(Ok(_)).handleErrorWith(upstreamError)
 
       case GET -> Root / "api" / "tournament" / id / "stream" =>
         ensureBot *> ndjson(botClient.streamTournamentRaw(id)).handleErrorWith(upstreamError)

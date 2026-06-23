@@ -4,19 +4,19 @@ imagePullSecrets:
 services:
   stockfish:
     image:
-      tag: latest
+      tag: sha-2d9df2de80c31a40658167f462d122c445ff4135
   model:
     image:
-      tag: latest
+      tag: sha-2d9df2de80c31a40658167f462d122c445ff4135
   playerservice:
     image:
-      tag: latest
+      tag: sha-2d9df2de80c31a40658167f462d122c445ff4135
   controller:
     image:
-      tag: latest
+      tag: sha-2d9df2de80c31a40658167f462d122c445ff4135
   lichess:
     image:
-      tag: latest
+      tag: sha-2d9df2de80c31a40658167f462d122c445ff4135
   frontend:
     image:
       repository: ghcr.io/luiszink/alu-chess-web

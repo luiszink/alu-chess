@@ -66,9 +66,11 @@ object TournamentGameRunner:
           onEvent(s"[game $gameId] could not build initial state: $err")
         case Right(game) =>
           val applied = moves.split(" ").count(_.nonEmpty)
-          val ctx = Ctx(myColor, game, applied, gs.status.exists(_ != "ongoing"))
+          // pending = created but not yet active; treat like ongoing (wait for moves)
+          val isFinished = gs.status.exists(s => s != "ongoing" && s != "pending")
+          val ctx = Ctx(myColor, game, applied, isFinished)
           cell.set(Some(ctx)) *>
-            onEvent(s"[game $gameId] started, I am ${myColor}, ${applied} moves in") *>
+            onEvent(s"[game $gameId] started as ${gs.status.getOrElse("unknown")}, I am ${myColor}, ${applied} moves in") *>
             maybeMove(client, tournamentId, gameId, settings, cell, onEvent)
 
     case GameEvent.Move(uci, _, _) =>
@@ -81,6 +83,9 @@ object TournamentGameRunner:
     case GameEvent.GameEnd(winner, status) =>
       cell.update(_.map(_.copy(finished = true))) *>
         onEvent(s"[game $gameId] ended: $status, winner: ${winner.getOrElse("draw")}")
+
+    case GameEvent.Heartbeat() =>
+      IO.unit
 
     case GameEvent.Unknown(raw) =>
       onEvent(s"[game $gameId] unknown event: $raw")

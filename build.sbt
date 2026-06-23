@@ -198,6 +198,7 @@ lazy val lichess = project
 //   - Registers bot, joins/creates tournaments
 //   - Streams tournament events and plays games using chess.model.ai.ChessAI
 //   - Exposes routes through ControllerServer; it must not start its own server
+//   - Also provides RandomBotMain for auto-joining tournament games with random moves
 lazy val tournament = project
   .in(file("tournament"))
   .dependsOn(model)
@@ -205,6 +206,7 @@ lazy val tournament = project
     commonSettings,
     assemblySettings,
     name := "alu-chess-tournament",
+    assembly / mainClass := Some("chess.tournament.bot.RandomBotMain"),
     libraryDependencies ++= Seq(
       "io.circe" %% "circe-core"    % circeVersion,
       "io.circe" %% "circe-generic" % circeVersion,

@@ -71,6 +71,9 @@ object TournamentBot:
           log(s"Tournament finished! Winner: $w") *>
             statusRef.set(BotStatus.Idle)
 
+        case TournamentEvent.Heartbeat() =>
+          IO.unit
+
         case TournamentEvent.Unknown(raw) =>
           log(s"Unknown event: $raw")
 
