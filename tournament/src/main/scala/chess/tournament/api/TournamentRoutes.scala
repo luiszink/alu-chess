@@ -151,11 +151,9 @@ object TournamentRoutes:
 
       // ── Auth passthrough → external tournament server ───────────────────────
       case req @ POST -> Root / "api" / "auth" / "register" =>
-        val ct = req.headers.get[org.http4s.headers.`Content-Type`]
-          .map(_.value).getOrElse("application/json")
         req.bodyText.compile.string
-          .flatMap(body => directorClient.registerRaw(body, ct))
-          .flatMap(Ok(_).map(_.withContentType(org.http4s.headers.`Content-Type`(MediaType.application.json))))
+          .flatMap(body => directorClient.registerRaw(body, "application/json"))
+          .flatMap(raw => Ok(raw).map(_.withContentType(`Content-Type`(MediaType.application.json))))
           .handleErrorWith(upstreamError)
 
       case GET -> Root / "api" / "tournament" / "ui" =>
