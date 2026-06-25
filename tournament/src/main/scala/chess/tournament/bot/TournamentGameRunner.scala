@@ -73,11 +73,17 @@ object TournamentGameRunner:
             onEvent(s"[game $gameId] started as ${gs.status.getOrElse("unknown")}, I am ${myColor}, ${applied} moves in") *>
             maybeMove(client, tournamentId, gameId, settings, cell, onEvent)
 
-    case GameEvent.Move(uci, _, _) =>
+    case GameEvent.Move(uci, fen, _) =>
+      // Trust the server's authoritative FEN; only fall back to replaying the UCI
+      // locally if the FEN unexpectedly fails to parse. This prevents the local
+      // board from ever drifting out of sync with the server.
       cell.update(_.map { ctx =>
-        applyUci(ctx.game, uci) match
+        Fen.parseE(fen.trim) match
           case Right(g) => ctx.copy(game = g, movesApplied = ctx.movesApplied + 1)
-          case Left(_)  => ctx
+          case Left(_) =>
+            applyUci(ctx.game, uci) match
+              case Right(g) => ctx.copy(game = g, movesApplied = ctx.movesApplied + 1)
+              case Left(_)  => ctx
       }) *> maybeMove(client, tournamentId, gameId, settings, cell, onEvent)
 
     case GameEvent.GameEnd(winner, status) =>
@@ -99,6 +105,7 @@ object TournamentGameRunner:
       settings: Settings,
       cell: AtomicCell[IO, Option[Ctx]],
       onEvent: String => IO[Unit],
+      allowResync: Boolean = true,
   ): IO[Unit] =
     cell.get.flatMap {
       case None => IO.unit
@@ -108,14 +115,48 @@ object TournamentGameRunner:
         IO.blocking {
           ChessAI.selectMove(ctx.game, settings.timeLimitMs, settings.maxDepth)
         }.flatMap {
+          case None if allowResync =>
+            // The local board thinks the game is over while the server still
+            // expects a move → likely a desync. Pull the authoritative state and
+            // try exactly once more before giving up.
+            onEvent(s"[game $gameId] no local move – resyncing from server...") *>
+              resyncFromServer(client, tournamentId, gameId, cell, onEvent) *>
+              maybeMove(client, tournamentId, gameId, settings, cell, onEvent, allowResync = false)
           case None =>
-            onEvent(s"[game $gameId] AI found no move (game over?)")
+            onEvent(s"[game $gameId] AI found no move (game truly over)")
           case Some(move) =>
             val uci = moveToUci(move)
             client.submitMove(tournamentId, gameId, uci)
               .handleErrorWith(e => onEvent(s"[game $gameId] move error: ${e.getMessage}")) *>
               onEvent(s"[game $gameId] played $uci")
         }
+    }
+
+  /** Replace the locally-tracked board with the server's authoritative state.
+    *
+    * A failed fetch/parse is logged but swallowed, so a transient resync error
+    * never tears down the game stream. */
+  private def resyncFromServer(
+      client: TournamentApiClient,
+      tournamentId: String,
+      gameId: String,
+      cell: AtomicCell[IO, Option[Ctx]],
+      onEvent: String => IO[Unit],
+  ): IO[Unit] =
+    client.getGame(tournamentId, gameId).attempt.flatMap {
+      case Right(json) =>
+        val cur    = json.hcursor
+        val fen    = cur.get[String]("fen").toOption.map(_.trim).filter(_.nonEmpty)
+        val status = cur.get[String]("status").toOption
+        fen.flatMap(f => Fen.parseE(f).toOption) match
+          case Some(game) =>
+            val finished = status.exists(s => s != "ongoing" && s != "pending")
+            cell.update(_.map(_.copy(game = game, finished = finished))) *>
+              onEvent(s"[game $gameId] resynced (status ${status.getOrElse("unknown")})")
+          case None =>
+            onEvent(s"[game $gameId] resync failed: no valid fen in server response")
+      case Left(e) =>
+        onEvent(s"[game $gameId] resync error: ${e.getMessage}")
     }
 
   // ── Helpers ───────────────────────────────────────────────────────────────
