@@ -23,11 +23,42 @@ final class TournamentApiClient(
 
   private var _token: String = ""
   private var _identity: Option[BotIdentity] = None
+  // Remembers the identity used for the last `register` so the client can
+  // re-register itself if the upstream server rejects a cached token (e.g. after
+  // a JWT secret rotation → "401 invalid signature").
+  private var _lastRegister: Option[(String, Boolean)] = None
   def hasToken: Boolean = _token.nonEmpty
   def identity: Option[BotIdentity] = _identity
   private def auth: Header.ToRaw = Authorization(Credentials.Token(AuthScheme.Bearer, _token))
   private def authed(req: Request[IO]): Request[IO] =
     if hasToken then req.putHeaders(auth) else req
+
+  /** Drop the cached token and register again with the remembered identity. */
+  private def reRegister: IO[Unit] =
+    _lastRegister match
+      case Some((name, isBot)) =>
+        _token = ""
+        _identity = None
+        register(name, isBot).void
+      case None => IO.unit
+
+  /** Run an authed call; on a 401 from the upstream server, re-register once and
+    * retry exactly once. The block is by-name so the request is rebuilt with the
+    * fresh token after re-registration. */
+  private def withReauth[A](io: => IO[A]): IO[A] =
+    io.handleErrorWith {
+      case _: UnauthorizedException if _lastRegister.isDefined =>
+        reRegister *> io
+      case e => IO.raiseError(e)
+    }
+
+  /** NDJSON variant of [[withReauth]]: on a 401, re-register and re-subscribe once. */
+  private def authedStream(build: => Request[IO]): fs2.Stream[IO, String] =
+    ndjson(build).handleErrorWith {
+      case _: UnauthorizedException if _lastRegister.isDefined =>
+        fs2.Stream.eval(reRegister).drain ++ ndjson(build)
+      case e => fs2.Stream.raiseError[IO](e)
+    }
 
   private val forwardedRequestHeaders: Set[String] =
     Set("authorization", "content-type", "accept")
@@ -86,6 +117,7 @@ final class TournamentApiClient(
       parse[RegisterResponse](raw).flatMap { resp =>
         _token = resp.token
         _identity = Some(BotIdentity(resp.id, name, resp.token))
+        _lastRegister = Some((name, isBot))
         IO.pure(_identity.get)
       }
     }
@@ -140,33 +172,45 @@ final class TournamentApiClient(
         maxConcurrentGames.map(v => "maxConcurrentGames" -> v.toString) ++
         openings.map(v => "openings" -> v)
     val form = UrlForm(fields*)
-    val req = authed(Request[IO](POST, baseUri / "api" / "tournament").withEntity(form))
-    rawString(req).flatMap(parseJson)
+    withReauth {
+      val req = authed(Request[IO](POST, baseUri / "api" / "tournament").withEntity(form))
+      rawString(req)
+    }.flatMap(parseJson)
 
   def joinTournament(id: String): IO[Unit] =
-    val req = authed(Request[IO](POST, baseUri / "api" / "tournament" / id / "join"))
-    rawString(req).void
+    withReauth {
+      val req = authed(Request[IO](POST, baseUri / "api" / "tournament" / id / "join"))
+      rawString(req)
+    }.void
 
   def startTournament(id: String): IO[Json] =
-    val req = authed(Request[IO](POST, baseUri / "api" / "tournament" / id / "start"))
-    rawString(req).flatMap(parseJson)
+    withReauth {
+      val req = authed(Request[IO](POST, baseUri / "api" / "tournament" / id / "start"))
+      rawString(req)
+    }.flatMap(parseJson)
 
   def getTournament(id: String): IO[Json] =
     val req = Request[IO](GET, baseUri / "api" / "tournament" / id)
     rawString(req).flatMap(parseJson)
 
   def deleteTournament(id: String): IO[Unit] =
-    val req = authed(Request[IO](DELETE, baseUri / "api" / "tournament" / id))
-    rawString(req).void
+    withReauth {
+      val req = authed(Request[IO](DELETE, baseUri / "api" / "tournament" / id))
+      rawString(req)
+    }.void
 
   def withdrawTournament(id: String): IO[Unit] =
-    val req = authed(Request[IO](POST, baseUri / "api" / "tournament" / id / "withdraw"))
-    rawString(req).void
+    withReauth {
+      val req = authed(Request[IO](POST, baseUri / "api" / "tournament" / id / "withdraw"))
+      rawString(req)
+    }.void
 
   def addParticipant(tournamentId: String, botId: String): IO[Unit] =
     val body = Json.obj("botId" -> Json.fromString(botId))
-    val req = authed(Request[IO](POST, baseUri / "api" / "tournament" / tournamentId / "participants").withEntity(body))
-    rawString(req).void
+    withReauth {
+      val req = authed(Request[IO](POST, baseUri / "api" / "tournament" / tournamentId / "participants").withEntity(body))
+      rawString(req)
+    }.void
 
   def roundPairings(id: String, round: Int): IO[Json] =
     val req = Request[IO](GET, baseUri / "api" / "tournament" / id / "round" / round.toString)
@@ -179,24 +223,25 @@ final class TournamentApiClient(
   // ── Move submission ───────────────────────────────────────────────────────
 
   def submitMove(tournamentId: String, gameId: String, uci: String): IO[Unit] =
-    val req = authed(Request[IO](
-      POST,
-      baseUri / "api" / "tournament" / tournamentId / "game" / gameId / "move" / uci,
-    ))
-    rawString(req).void
+    withReauth {
+      val req = authed(Request[IO](
+        POST,
+        baseUri / "api" / "tournament" / tournamentId / "game" / gameId / "move" / uci,
+      ))
+      rawString(req)
+    }.void
 
   // ── NDJSON Streams ───────────────────────────────────────────────────────
 
   def streamTournament(tournamentId: String): fs2.Stream[IO, TournamentEvent] =
-    val req = authed(Request[IO](GET, baseUri / "api" / "tournament" / tournamentId / "stream"))
-    ndjson(req).evalMap(decode[TournamentEvent])
+    authedStream(authed(Request[IO](GET, baseUri / "api" / "tournament" / tournamentId / "stream")))
+      .evalMap(decode[TournamentEvent])
 
   def streamGame(tournamentId: String, gameId: String): fs2.Stream[IO, GameEvent] =
-    val req = authed(Request[IO](
+    authedStream(authed(Request[IO](
       GET,
       baseUri / "api" / "tournament" / tournamentId / "game" / gameId / "stream",
-    ))
-    ndjson(req).evalMap(decode[GameEvent])
+    ))).evalMap(decode[GameEvent])
 
   def results(tournamentId: String, nb: Option[Int]): fs2.Stream[IO, String] =
     val uri0 = baseUri / "api" / "tournament" / tournamentId / "results"
@@ -220,15 +265,13 @@ final class TournamentApiClient(
     rawString(req).flatMap(parseJson)
 
   def streamTournamentRaw(tournamentId: String): fs2.Stream[IO, String] =
-    val req = authed(Request[IO](GET, baseUri / "api" / "tournament" / tournamentId / "stream"))
-    ndjson(req)
+    authedStream(authed(Request[IO](GET, baseUri / "api" / "tournament" / tournamentId / "stream")))
 
   def streamGameRaw(tournamentId: String, gameId: String): fs2.Stream[IO, String] =
-    val req = authed(Request[IO](
+    authedStream(authed(Request[IO](
       GET,
       baseUri / "api" / "tournament" / tournamentId / "game" / gameId / "stream",
-    ))
-    ndjson(req)
+    )))
 
   // ── Internals ─────────────────────────────────────────────────────────────
 
@@ -236,8 +279,10 @@ final class TournamentApiClient(
   private def rawString(req: Request[IO]): IO[String] =
     client.run(req).use { resp =>
       resp.body.through(fs2.text.utf8.decode).compile.string.flatMap { body =>
+        val msg = s"${resp.status.code} ${resp.status.reason}: $body"
         if resp.status.isSuccess then IO.pure(body)
-        else IO.raiseError(new RuntimeException(s"${resp.status.code} ${resp.status.reason}: $body"))
+        else if resp.status == Status.Unauthorized then IO.raiseError(new UnauthorizedException(msg))
+        else IO.raiseError(new RuntimeException(msg))
       }
     }
 
@@ -250,7 +295,9 @@ final class TournamentApiClient(
         else
           fs2.Stream.eval(
             resp.body.through(fs2.text.utf8.decode).compile.string.flatMap { body =>
-              IO.raiseError(new RuntimeException(s"NDJSON stream ${resp.status.code}: $body"))
+              val msg = s"NDJSON stream ${resp.status.code}: $body"
+              if resp.status == Status.Unauthorized then IO.raiseError(new UnauthorizedException(msg))
+              else IO.raiseError(new RuntimeException(msg))
             }
           ).drain
       }
@@ -264,3 +311,8 @@ final class TournamentApiClient(
 
   private def decode[A: Decoder](line: String): IO[A] =
     IO.fromEither(JsonParser.decode[A](line).left.map(e => new RuntimeException(s"Decode error: ${e.getMessage} on: $line")))
+
+/** Raised when the upstream tournament server responds with 401 Unauthorized
+  * (e.g. a cached JWT signed with a now-rotated secret → "invalid signature").
+  * Callers re-register and retry once when they see this. */
+final class UnauthorizedException(message: String) extends RuntimeException(message)
